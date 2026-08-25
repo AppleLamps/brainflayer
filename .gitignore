@@ -41,3 +41,7 @@ filehex
 # misc
 old
 notes
+
+# Downloaded Bible data (fetch with scripts/fetch_bible.py)
+data/*.json
+!data/.gitkeep
