@@ -17,6 +17,10 @@
 #include <sys/types.h>
 #include <sys/sysinfo.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "ripemd160_256.h"
 
 #include "ec_pubkey_fast.h"
@@ -100,27 +104,20 @@ static int (*input2priv)(unsigned char *, unsigned char *, size_t);
 
 /* bitcoin uncompressed address */
 static void uhash160(hash160_t *h, const unsigned char *upub) {
-  SHA256_CTX ctx;
   unsigned char hash[SHA256_DIGEST_LENGTH];
-
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, upub, 65);
-  SHA256_Final(hash, &ctx);
+  SHA256(upub, 65, hash);
   ripemd160_256(hash, h->uc);
 }
 
 /* bitcoin compressed address */
 static void chash160(hash160_t *h, const unsigned char *upub) {
-  SHA256_CTX ctx;
   unsigned char cpub[33];
   unsigned char hash[SHA256_DIGEST_LENGTH];
 
   /* quick and dirty public key compression */
   cpub[0] = 0x02 | (upub[64] & 0x01);
   memcpy(cpub + 1, upub + 1, 32);
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, cpub, 33);
-  SHA256_Final(hash, &ctx);
+  SHA256(cpub, 33, hash);
   ripemd160_256(hash, h->uc);
 }
 
@@ -145,12 +142,7 @@ static void xhash160(hash160_t *h, const unsigned char *upub) {
 
 
 static int pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
-  SHA256_CTX ctx;
-
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, pass, pass_sz);
-  SHA256_Final(priv, &ctx);
-
+  SHA256(pass, pass_sz, priv);
   return 0;
 }
 
@@ -362,6 +354,9 @@ void usage(unsigned char *name) {
  -n K/N                      use only the Kth of every N input lines\n\
  -B BATCH_SIZE               batch size for affine transformations\n\
                              must be a power of 2 (default/max: %d)\n\
+ -j N                        OpenMP threads for pubkey generation (default: 1)\n\
+                             For multi-core, run one process per CPU:\n\
+                             scripts/run_brainflayer.sh\n\
  -w WINDOW_SIZE              window size for ecmult table (default: 16)\n\
                              uses about 3 * 2^w KiB memory on startup, but\n\
                              only about 2^w KiB once the table is built\n\
@@ -392,7 +387,7 @@ int main(int argc, char **argv) {
 
   unsigned char modestr[64];
 
-  int spok = 0, aopt = 0, vopt = 0, wopt = 16, xopt = 0;
+  int spok = 0, aopt = 0, vopt = 0, wopt = 16, xopt = 0, jopt = 0;
   int nopt_mod = 0, nopt_rem = 0, Bopt = 0;
   uint64_t kopt = 0, Nopt = ~0ULL;
   unsigned char *bopt = NULL, *iopt = NULL, *oopt = NULL;
@@ -412,7 +407,7 @@ int main(int argc, char **argv) {
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
 
-  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:N:B:")) != -1) {
+  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:N:B:j:")) != -1) {
     switch (c) {
       case 'a':
         aopt = 1; // open output file in append mode
@@ -430,6 +425,12 @@ int main(int argc, char **argv) {
         break;
       case 'B':
         Bopt = atoi(optarg);
+        break;
+      case 'j':
+        jopt = atoi(optarg);
+        if (jopt < 1) {
+          bail(1, "Invalid '-j' argument, threads must be >= 1\n");
+        }
         break;
       case 'N':
         Nopt = strtoull(optarg, NULL, 0); // allows 0x
@@ -697,6 +698,28 @@ int main(int argc, char **argv) {
 
   if (vopt && ofile == stdout && isatty(fileno(stdout))) { tty = 1; }
 
+#ifdef _OPENMP
+  if (jopt < 1) {
+    const char *env = getenv("OMP_NUM_THREADS");
+    if (env != NULL && atoi(env) > 0) {
+      jopt = atoi(env);
+    } else {
+      /* One process per core is faster than intra-process OpenMP on the
+         512MiB bloom filter; default to a single thread. */
+      jopt = 1;
+    }
+  }
+  omp_set_dynamic(0);
+  omp_set_num_threads(jopt);
+  if (vopt) {
+    fprintf(stderr, "[*] OpenMP threads: %d\n", omp_get_max_threads());
+  }
+#else
+  if (jopt > 1) {
+    fprintf(stderr, "[!] Built without OpenMP; -j is ignored\n");
+  }
+#endif
+
   brainflayer_init_globals();
 
   if (secp256k1_ec_pubkey_precomp_table(wopt, mopt) != 0) {
@@ -762,54 +785,36 @@ int main(int argc, char **argv) {
         }
       }
 
-      // batch compute the public keys
-      secp256k1_ec_pubkey_batch_create(Bopt, batch_upub, batch_priv);
-
       // save ending value from read loop
       batch_stopped = i;
+      if (batch_stopped <= 0) {
+        break;
+      }
+      // only compute keys that were actually read (skip leftover batch slots)
+      secp256k1_ec_pubkey_batch_create(batch_stopped, batch_upub, batch_priv);
     }
 
     // loop over the public keys
-    for (i = 0; i < batch_stopped; ++i) {
-      if (bloom) { /* crack mode */
-        // loop over pubkey hash functions
+    if (bloom) { /* crack mode */
+      for (i = 0; i < batch_stopped; ++i) {
         for (j = 0; pubhashfn[j].fn != NULL; ++j) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
-
-          unsigned int bit;
-          bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-
-          if (!fopt || hsearchf(ffile, &hash160)) {
-            if (tty) { fprintf(ofile, "\033[0K"); }
-            // reformat/populate the line if required
-            if (Iopt) {
-              hex(batch_priv[i], 32, batch_line[i], 65);
-            }
-            fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-            ++olines;
+          if (!bloom_chk_hash160(bloom, hash160.ul)) {
+            continue;
           }
+          if (fopt && !hsearchf(ffile, &hash160)) {
+            continue;
+          }
+          if (tty) { fprintf(ofile, "\033[0K"); }
+          if (Iopt) {
+            hex(batch_priv[i], 32, batch_line[i], 65);
+          }
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+          ++olines;
         }
-      } else { /* generate mode */
-        // reformat/populate the line if required
+      }
+    } else { /* generate mode */
+      for (i = 0; i < batch_stopped; ++i) {
         if (Iopt) {
           hex(batch_priv[i], 32, batch_line[i], 65);
         }
@@ -827,7 +832,6 @@ int main(int argc, char **argv) {
 
     // start stats
     if (vopt) {
-      ilines_curr += batch_stopped;
       if (batch_stopped < Bopt || (ilines_curr & report_mask) == 0) {
         time_curr = getns();
         time_delta = time_curr - time_last;

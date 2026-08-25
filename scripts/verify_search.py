@@ -296,22 +296,28 @@ def main() -> None:
         fail("seed_candidates.txt does not contain exact line 'password'")
     ok("seed list contains 'password' as an exact line")
 
-    print("\n=== 8. Verbose count sanity ===")
-    seed_count = 0
-    with SEEDS.open("rb") as handle:
-        for _ in handle:
-            seed_count += 1
-    print(f"  seed_candidates.txt lines: {seed_count:,}")
-    print("  last run reported ~94,862,118 in verbose mode")
-    print("  brainflayer -v double-counts ilines (adds batch_stopped twice)")
-    print(f"  2 * seeds = {seed_count * 2:,} (matches last run if {seed_count * 2 == 94862118})")
-    if seed_count * 2 == 94_862_118:
-        ok("last run processed every seed (verbose counter is 2x actual lines)")
-    else:
-        print(
-            f"  NOTE: 2*seeds={seed_count * 2:,} vs reported 94,862,118 "
-            "(file may have been rebuilt)"
-        )
+    print("\n=== 8. Verbose counter matches input lines ===")
+    sample = ["verbose-count-check"] * 5000
+    proc = subprocess.run(
+        [str(BRAINFLAYER), "-v", "-c", "uc", "-b", str(BTC_BLF), "-N", "5000"],
+        input="\n".join(sample) + "\n",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        fail(f"verbose counter run failed: {proc.stderr[-1000:]}")
+    reported = None
+    for line in proc.stderr.replace("\r", "\n").splitlines():
+        if "found:" in line:
+            # rate: ... found:     0/5000       elapsed: ...
+            try:
+                reported = int(line.split("found:", 1)[1].split("/", 1)[1].split()[0])
+            except (IndexError, ValueError):
+                continue
+    if reported != 5000:
+        fail(f"verbose counter reported {reported} lines, expected 5000")
+    ok("verbose progress counter equals the number of passphrases (not 2x)")
 
     print("\n=== RESULT: search pipeline is working ===")
     print("brainflayer SHA256(passphrase) -> privkey -> compressed+uncompressed")

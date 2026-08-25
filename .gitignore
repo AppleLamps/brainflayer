@@ -56,4 +56,5 @@ data/seed_candidates.manifest.tsv
 data/*_run.log
 data/addresses_to_hash160.log
 data/hex2blf.log
+data/*.tab
 !data/.gitkeep
