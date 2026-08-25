@@ -522,12 +522,12 @@ def load_freq_words(path: Path, limit: int = 20000) -> list[str]:
     return words
 
 
-def load_password_lines(path: Path, limit: int | None = None) -> list[str]:
+def load_password_lines(path: Path, limit: int | None = None, *, min_len: int = 3) -> list[str]:
     lines: list[str] = []
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
             item = line.strip()
-            if 3 <= len(item) <= 128:
+            if min_len <= len(item) <= 128:
                 lines.append(item)
                 if limit is not None and len(lines) >= limit:
                     break
@@ -833,7 +833,7 @@ def generate(emitter: Emitter) -> None:
                 emitter.emit("geo", f"{city} {country}")
 
     for path in sorted(CORPORA.glob("bip39_*.txt")):
-        words = load_password_lines(path)
+        words = load_password_lines(path, min_len=1)
         source = f"bip39:{path.stem.replace('bip39_', '')}"
         print(f"  {source} {len(words)} words...", file=sys.stderr)
         for word in words:
