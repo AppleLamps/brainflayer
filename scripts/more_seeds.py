@@ -26,19 +26,59 @@ EXISTING = ROOT / "data" / "seed_candidates.txt"
 DELTA = ROOT / "data" / "seed_candidates_delta.txt"
 UA = "brainflayer-seedgen/1.0"
 
+
+def _freq_url(lang: str, filename: str) -> str:
+    return (
+        "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/"
+        f"content/2018/{lang}/{filename}"
+    )
+
+
+# Already-tested in the first extra-corpora run: fr es de it pt nl pl tr id sv uk ro
 FREQ_LANGS = {
-    "fr": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/fr/fr_50k.txt",
-    "es": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/es/es_50k.txt",
-    "de": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/de/de_50k.txt",
-    "it": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/it/it_50k.txt",
-    "pt": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/pt_br/pt_br_50k.txt",
-    "nl": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/nl/nl_50k.txt",
-    "pl": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/pl/pl_50k.txt",
-    "tr": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/tr/tr_50k.txt",
-    "id": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/id/id_50k.txt",
-    "sv": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt",
-    "uk": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/uk/uk_50k.txt",
-    "ro": "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ro/ro_50k.txt",
+    "fr": _freq_url("fr", "fr_50k.txt"),
+    "es": _freq_url("es", "es_50k.txt"),
+    "de": _freq_url("de", "de_50k.txt"),
+    "it": _freq_url("it", "it_50k.txt"),
+    "pt": _freq_url("pt_br", "pt_br_50k.txt"),
+    "nl": _freq_url("nl", "nl_50k.txt"),
+    "pl": _freq_url("pl", "pl_50k.txt"),
+    "tr": _freq_url("tr", "tr_50k.txt"),
+    "id": _freq_url("id", "id_50k.txt"),
+    "sv": _freq_url("sv", "sv_50k.txt"),
+    "uk": _freq_url("uk", "uk_50k.txt"),
+    "ro": _freq_url("ro", "ro_50k.txt"),
+    "ar": _freq_url("ar", "ar_50k.txt"),
+    "ja": _freq_url("ja", "ja_full.txt"),
+    "ko": _freq_url("ko", "ko_50k.txt"),
+    "he": _freq_url("he", "he_50k.txt"),
+    "hi": _freq_url("hi", "hi_full.txt"),
+    "fa": _freq_url("fa", "fa_50k.txt"),
+    "th": _freq_url("th", "th_50k.txt"),
+    "bn": _freq_url("bn", "bn_50k.txt"),
+    "vi": _freq_url("vi", "vi_50k.txt"),
+    "zh_cn": _freq_url("zh_cn", "zh_cn_50k.txt"),
+    "cs": _freq_url("cs", "cs_50k.txt"),
+    "da": _freq_url("da", "da_50k.txt"),
+    "el": _freq_url("el", "el_50k.txt"),
+    "fi": _freq_url("fi", "fi_50k.txt"),
+    "hu": _freq_url("hu", "hu_50k.txt"),
+    "no": _freq_url("no", "no_50k.txt"),
+    "ms": _freq_url("ms", "ms_50k.txt"),
+    "ur": _freq_url("ur", "ur_50k.txt"),
+    "sw": _freq_url("sw", "sw_50k.txt"),
+    "tl": _freq_url("tl", "tl_50k.txt"),
+    "ca": _freq_url("ca", "ca_50k.txt"),
+    "hr": _freq_url("hr", "hr_50k.txt"),
+    "sk": _freq_url("sk", "sk_50k.txt"),
+    "bg": _freq_url("bg", "bg_50k.txt"),
+    "sr": _freq_url("sr", "sr_50k.txt"),
+    "lt": _freq_url("lt", "lt_50k.txt"),
+    "lv": _freq_url("lv", "lv_50k.txt"),
+    "et": _freq_url("et", "et_50k.txt"),
+    "sl": _freq_url("sl", "sl_50k.txt"),
+    "af": _freq_url("af", "af_50k.txt"),
+    "sq": _freq_url("sq", "sq_50k.txt"),
 }
 
 DOWNLOADS: dict[str, str] = {
@@ -62,8 +102,38 @@ DOWNLOADS: dict[str, str] = {
         "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
         "Passwords/Leaked-Databases/rockyou-75.txt"
     ),
+    "passwords_darkweb10k.txt": (
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
+        "Passwords/Common-Credentials/darkweb2017_top-10000.txt"
+    ),
+    "passwords_ncsc100k.txt": (
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
+        "Passwords/Common-Credentials/100k-most-used-passwords-NCSC.txt"
+    ),
+    "passwords_pwdb100k.txt": (
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
+        "Passwords/Common-Credentials/Pwdb_top-100000.txt"
+    ),
+    "passwords_pwdb1m.txt": (
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
+        "Passwords/Common-Credentials/Pwdb_top-1000000.txt"
+    ),
+    "passwords_probable12k.txt": (
+        "https://raw.githubusercontent.com/danielmiessler/SecLists/master/"
+        "Passwords/Common-Credentials/probable-v2_top-12000.txt"
+    ),
     "quran_en_pickthall.txt": "https://tanzil.net/trans/en.pickthall",
     "quran_en_yusufali.txt": "https://tanzil.net/trans/en.yusufali",
+    "quran_en_sahih.txt": "https://tanzil.net/trans/en.sahih",
+    "quran_en_arberry.txt": "https://tanzil.net/trans/en.arberry",
+    "quran_fr_hamidullah.txt": "https://tanzil.net/trans/fr.hamidullah",
+    "quran_es_garcia.txt": "https://tanzil.net/trans/es.garcia",
+    "quran_ru_kuliev.txt": "https://tanzil.net/trans/ru.kuliev",
+    "quran_de_aburida.txt": "https://tanzil.net/trans/de.aburida",
+    "quran_tr_diyanet.txt": "https://tanzil.net/trans/tr.diyanet",
+    "quran_zh_jian.txt": "https://tanzil.net/trans/zh.jian",
+    "quran_fa_fooladvand.txt": "https://tanzil.net/trans/fa.fooladvand",
+    "quran_id_indonesian.txt": "https://tanzil.net/trans/id.indonesian",
     "bible_bbe.json": (
         "https://raw.githubusercontent.com/thiagobodruk/bible/master/json/en_bbe.json"
     ),
@@ -92,7 +162,80 @@ DOWNLOADS: dict[str, str] = {
     "constitution.txt": "https://www.gutenberg.org/files/5/5-0.txt",
     "gettysburg.txt": "https://www.gutenberg.org/files/4/4-0.txt",
     "moby.txt": "https://www.gutenberg.org/files/2701/2701-0.txt",
+    "frankenstein.txt": "https://www.gutenberg.org/files/84/84-0.txt",
+    "pride.txt": "https://www.gutenberg.org/files/1342/1342-0.txt",
+    "sherlock.txt": "https://www.gutenberg.org/files/1661/1661-0.txt",
+    "dracula.txt": "https://www.gutenberg.org/files/345/345-0.txt",
+    "oz.txt": "https://www.gutenberg.org/files/55/55-0.txt",
+    "christmascarol.txt": "https://www.gutenberg.org/files/46/46-0.txt",
+    "twocities.txt": "https://www.gutenberg.org/files/98/98-0.txt",
+    "huckfinn.txt": "https://www.gutenberg.org/files/76/76-0.txt",
+    "doriangray.txt": "https://www.gutenberg.org/files/174/174-0.txt",
+    "janeeyre.txt": "https://www.gutenberg.org/files/1260/1260-0.txt",
+    "treasure.txt": "https://www.gutenberg.org/files/120/120-0.txt",
+    "waroftheworlds.txt": "https://www.gutenberg.org/files/36/36-0.txt",
+    "jekyll.txt": "https://www.gutenberg.org/files/43/43-0.txt",
+    "prince.txt": "https://www.gutenberg.org/files/1232/1232-0.txt",
+    "peterpan.txt": "https://www.gutenberg.org/files/16/16-0.txt",
+    "pinocchio.txt": "https://www.gutenberg.org/files/244/244-0.txt",
+    "federalist.txt": "https://www.gutenberg.org/files/1404/1404-0.txt",
+    "declaration.txt": "https://www.gutenberg.org/files/1/1-0.txt",
+    "paradiselost.txt": "https://www.gutenberg.org/files/26/26-0.txt",
+    "mormon.txt": "https://www.gutenberg.org/files/17/17-0.txt",
+    "gita.txt": "https://www.gutenberg.org/files/2388/2388.txt",
+    "dhammapada.txt": "https://www.gutenberg.org/files/2017/2017-0.txt",
+    "eff_large.txt": "https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt",
+    "world_cities.csv": (
+        "https://raw.githubusercontent.com/datasets/world-cities/master/data/world-cities.csv"
+    ),
 }
+
+BIBLE_JSON = {
+    f"bible_{abbrev}.json": (
+        f"https://raw.githubusercontent.com/thiagobodruk/bible/master/json/{abbrev}.json"
+    )
+    for abbrev in (
+        "ar_svd",
+        "de_schlachter",
+        "el_greek",
+        "eo_esperanto",
+        "es_rvr",
+        "fi_finnish",
+        "fi_pr",
+        "fr_apee",
+        "ko_ko",
+        "pt_aa",
+        "pt_acf",
+        "pt_nvi",
+        "ro_cornilescu",
+        "ru_synodal",
+        "vi_vietnamese",
+        "zh_cuv",
+        "zh_ncv",
+    )
+}
+
+BIP39_FILES = {
+    "bip39_spanish.txt": "spanish.txt",
+    "bip39_french.txt": "french.txt",
+    "bip39_italian.txt": "italian.txt",
+    "bip39_japanese.txt": "japanese.txt",
+    "bip39_korean.txt": "korean.txt",
+    "bip39_czech.txt": "czech.txt",
+    "bip39_portuguese.txt": "portuguese.txt",
+    "bip39_chinese_simplified.txt": "chinese_simplified.txt",
+    "bip39_chinese_traditional.txt": "chinese_traditional.txt",
+}
+
+DOWNLOADS.update(BIBLE_JSON)
+DOWNLOADS.update(
+    {
+        name: (
+            "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/" + filename
+        )
+        for name, filename in BIP39_FILES.items()
+    }
+)
 
 EXTRA_PHRASES = [
     "to be or not to be",
@@ -175,6 +318,51 @@ EXTRA_PHRASES = [
     "vires in numeris",
     "the times 03/jan/2009",
     "chancellor on brink of second bailout for banks",
+    "a purely peer-to-peer version of electronic cash would allow online payments",
+    "digital signatures provide part of the solution",
+    "we propose a solution to the double-spending problem using a peer-to-peer network",
+    "the network timestamps transactions by hashing them into an ongoing chain of hash-based proof-of-work",
+    "the longest chain not only serves as proof of the sequence of events witnessed",
+    "nodes can leave and rejoin the network at will",
+    "new transactions are broadcast to all nodes",
+    "each node collects new transactions into a block",
+    "nodes express their acceptance of the block by working on creating the next block in the chain",
+    "incentive can help encourage nodes to stay honest",
+    "simplified payment verification",
+    "hash-based proof-of-work",
+    "peer-to-peer electronic cash system",
+    "without going through a financial institution",
+    "genesis block",
+    "block 0",
+    "block zero",
+    "the times 03/jan/2009 chancellor on brink of second bailout for banks",
+    "i am not satoshi",
+    "we are all satoshi",
+    "not your bitcoin not your keys",
+    "hodl",
+    "hodling",
+    "to the moon",
+    "laser eyes",
+    "fix the money fix the world",
+    "sound money",
+    "hard money",
+    "can't print more",
+    "cant print more",
+    "one bitcoin",
+    "21 million bitcoin",
+    "satoshi nakamoto",
+    "craig wright is not satoshi",
+    "len sassaman",
+    "adam back",
+    "wei dai",
+    "b-money",
+    "bit gold",
+    "hashcash",
+    "tim may",
+    "crypto anarchist manifesto",
+    "cypherpunks write code",
+    "a cypherpunk's manifesto",
+    "privacy is necessary for an open society in the electronic age",
 ]
 
 BBE_ABBREV = {
@@ -432,6 +620,37 @@ def load_countries(path: Path) -> list[str]:
     return names
 
 
+def load_cities(path: Path, limit: int = 8000) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            city = (row.get("name") or row.get("Name") or "").strip()
+            country = (row.get("country") or row.get("Country") or "").strip()
+            key = city.lower()
+            if len(city) < 3 or key in seen:
+                continue
+            seen.add(key)
+            rows.append((city, country))
+            if len(rows) >= limit:
+                break
+    return rows
+
+
+def load_eff_words(path: Path) -> list[str]:
+    words: list[str] = []
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            word = parts[-1]
+            if word.isalpha() and 3 <= len(word) <= 40:
+                words.append(word.lower())
+    return words
+
+
 class Emitter:
     def __init__(self, existing: set[int], handle: io.TextIOBase) -> None:
         self.existing = existing
@@ -454,6 +673,9 @@ class Emitter:
             self.handle.write(variant + "\n")
             self.written += 1
             self.by_source[source] = self.by_source.get(source, 0) + 1
+            if self.written % 1_000_000 == 0:
+                self.handle.flush()
+                print(f"  wrote {self.written:,} new / skipped {self.skipped:,}", file=sys.stderr)
 
 
 def load_existing_hashes(path: Path) -> set[int]:
@@ -491,6 +713,9 @@ def emit_scripture_verse(
     if words:
         prefix = " ".join(words[:7])
         emitter.emit(source, prefix)
+    compact = "".join(words)
+    if compact and len(compact) >= 6 and compact != strip_punctuation(text):
+        emitter.emit(source, compact, nopunct=False)
 
 
 def generate(emitter: Emitter) -> None:
@@ -499,12 +724,24 @@ def generate(emitter: Emitter) -> None:
     for phrase in EXTRA_PHRASES:
         emitter.emit("extra", phrase)
 
-    for year in range(1970, 2017):
+    for year in range(1950, 2027):
         emitter.emit("year", str(year), nopunct=False)
         emitter.emit("year", f"bitcoin {year}")
         emitter.emit("year", f"password{year}", nopunct=False)
 
-    for name in ("passwords_10k.txt", "passwords_100k.txt", "passwords_1m.txt", "passwords_darkweb.txt", "passwords_rockyou75.txt"):
+    password_files = (
+        "passwords_10k.txt",
+        "passwords_100k.txt",
+        "passwords_1m.txt",
+        "passwords_darkweb.txt",
+        "passwords_darkweb10k.txt",
+        "passwords_rockyou75.txt",
+        "passwords_ncsc100k.txt",
+        "passwords_pwdb100k.txt",
+        "passwords_pwdb1m.txt",
+        "passwords_probable12k.txt",
+    )
+    for name in password_files:
         path = CORPORA / name
         if not path.exists():
             continue
@@ -531,6 +768,16 @@ def generate(emitter: Emitter) -> None:
     for name, source in (
         ("quran_en_pickthall.txt", "quran-en-pickthall"),
         ("quran_en_yusufali.txt", "quran-en-yusufali"),
+        ("quran_en_sahih.txt", "quran-en-sahih"),
+        ("quran_en_arberry.txt", "quran-en-arberry"),
+        ("quran_fr_hamidullah.txt", "quran-fr"),
+        ("quran_es_garcia.txt", "quran-es"),
+        ("quran_ru_kuliev.txt", "quran-ru"),
+        ("quran_de_aburida.txt", "quran-de"),
+        ("quran_tr_diyanet.txt", "quran-tr"),
+        ("quran_zh_jian.txt", "quran-zh"),
+        ("quran_fa_fooladvand.txt", "quran-fa"),
+        ("quran_id_indonesian.txt", "quran-id"),
     ):
         path = CORPORA / name
         if not path.exists():
@@ -541,12 +788,12 @@ def generate(emitter: Emitter) -> None:
             emit_scripture_verse(emitter, source, "Quran", surah, ayah, text)
             emitter.emit(source, f"{surah}:{ayah} {text}")
 
-    bbe_path = CORPORA / "bible_bbe.json"
-    if bbe_path.exists():
-        verses = load_bbe_verses(bbe_path)
-        print(f"  BBE bible {len(verses):,} verses...", file=sys.stderr)
+    for path in sorted(CORPORA.glob("bible_*.json")):
+        source = f"bible-{path.stem.replace('bible_', '')}"
+        verses = load_bbe_verses(path)
+        print(f"  {source} {len(verses):,} verses...", file=sys.stderr)
         for book, chapter, verse, text in verses:
-            emit_scripture_verse(emitter, "bible-bbe", book, chapter, verse, text)
+            emit_scripture_verse(emitter, source, book, chapter, verse, text)
 
     for name in ("quotes.json", "quotes2.json"):
         path = CORPORA / name
@@ -575,20 +822,44 @@ def generate(emitter: Emitter) -> None:
             emitter.emit("geo", country)
             emitter.emit("geo", f"bitcoin {country}")
 
-    bip39_path = CORPORA / "bip39_en.txt"
-    if bip39_path.exists():
-        words = load_password_lines(bip39_path)
-        print(f"  BIP39 {len(words)} words...", file=sys.stderr)
+    cities_path = CORPORA / "world_cities.csv"
+    if cities_path.exists():
+        cities = load_cities(cities_path)
+        print(f"  cities {len(cities):,}...", file=sys.stderr)
+        for city, country in cities:
+            emitter.emit("geo", city)
+            emitter.emit("geo", f"bitcoin {city}")
+            if country:
+                emitter.emit("geo", f"{city} {country}")
+
+    for path in sorted(CORPORA.glob("bip39_*.txt")):
+        words = load_password_lines(path)
+        source = f"bip39:{path.stem.replace('bip39_', '')}"
+        print(f"  {source} {len(words)} words...", file=sys.stderr)
         for word in words:
-            emitter.emit("bip39", word, nopunct=False)
+            emitter.emit(source, word, nopunct=False)
+        phrase_top = {2: 150, 3: 30, 4: 15} if path.name != "bip39_en.txt" else {2: 200, 3: 50, 4: 20}
         for phrase in iter_dictionary_phrases(
             words,
             phrase_lengths=(2, 3, 4),
-            top_n_by_length={2: 200, 3: 50, 4: 20},
+            top_n_by_length=phrase_top,
         ):
-            emitter.emit("bip39:phrase", phrase, nopunct=False)
+            emitter.emit(f"{source}:phrase", phrase, nopunct=False)
 
-    for name in (
+    eff_path = CORPORA / "eff_large.txt"
+    if eff_path.exists():
+        words = load_eff_words(eff_path)
+        print(f"  EFF diceware {len(words)} words...", file=sys.stderr)
+        for word in words:
+            emitter.emit("eff", word, nopunct=False)
+        for phrase in iter_dictionary_phrases(
+            words,
+            phrase_lengths=(2, 3, 4),
+            top_n_by_length={2: 200, 3: 40, 4: 18},
+        ):
+            emitter.emit("eff:phrase", phrase, nopunct=False)
+
+    book_names = (
         "alice.txt",
         "shakespeare.txt",
         "artofwar.txt",
@@ -596,7 +867,30 @@ def generate(emitter: Emitter) -> None:
         "constitution.txt",
         "gettysburg.txt",
         "moby.txt",
-    ):
+        "frankenstein.txt",
+        "pride.txt",
+        "sherlock.txt",
+        "dracula.txt",
+        "oz.txt",
+        "christmascarol.txt",
+        "twocities.txt",
+        "huckfinn.txt",
+        "doriangray.txt",
+        "janeeyre.txt",
+        "treasure.txt",
+        "waroftheworlds.txt",
+        "jekyll.txt",
+        "prince.txt",
+        "peterpan.txt",
+        "pinocchio.txt",
+        "federalist.txt",
+        "declaration.txt",
+        "paradiselost.txt",
+        "mormon.txt",
+        "gita.txt",
+        "dhammapada.txt",
+    )
+    for name in book_names:
         path = CORPORA / name
         if not path.exists():
             continue
