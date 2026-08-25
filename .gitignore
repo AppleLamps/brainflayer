@@ -47,7 +47,10 @@ data/*.json
 data/*.hex
 data/*.blf
 data/bible_seeds.txt
-data/*_run.log
+data/bitcointalk_seeds*.txt
+data/bitcointalk_signatures_raw.txt
+data/seed_candidates.txt
+data/seed_candidates.manifest.tsv
 data/*_run.log
 data/addresses_to_hash160.log
 data/hex2blf.log
