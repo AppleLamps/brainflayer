@@ -25,6 +25,12 @@ DEFAULT_BITCOINTALK_CANDIDATES = [
 ]
 DEFAULT_OUTPUT = ROOT / "data" / "seed_candidates.txt"
 DEFAULT_MANIFEST = ROOT / "data" / "seed_candidates.manifest.tsv"
+DICT_DIR = ROOT / "data" / "dict"
+DICT_FILES = {
+    "en": DICT_DIR / "english.txt",
+    "ru": DICT_DIR / "russian.txt",
+    "zh": DICT_DIR / "chinese.txt",
+}
 
 EXTRA_SEEDS = [
     "bitcoin",
@@ -219,6 +225,33 @@ def add_extra_candidates(seen: set[str], manifest: list[tuple[str, str]]) -> Non
         add_variants(seen, manifest, "extra", seed, include_truncations=False)
 
 
+def load_dictionary_words(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    words: list[str] = []
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            word = line.strip()
+            if word and not word.startswith("#"):
+                words.append(word)
+    return words
+
+
+def add_dictionary_candidates(seen: set[str], manifest: list[tuple[str, str]], dict_dir: Path) -> None:
+    for language, default_path in DICT_FILES.items():
+        path = dict_dir / default_path.name
+        if not path.exists():
+            path = default_path
+        words = load_dictionary_words(path)
+        if not words:
+            print(f"Warning: dictionary not found or empty: {path}", file=sys.stderr)
+            continue
+        print(f"Adding {len(words):,} {language} dictionary words...", file=sys.stderr)
+        for word in words:
+            for variant in expand_variants(word):
+                add_variant(seen, manifest, f"dict:{language}", variant)
+
+
 def resolve_bitcointalk_path(path: Path | None) -> Path | None:
     if path is not None:
         return path if path.exists() else None
@@ -231,9 +264,11 @@ def resolve_bitcointalk_path(path: Path | None) -> Path | None:
 def build_seed_list(
     bible_path: Path,
     quran_path: Path,
+    dict_dir: Path,
     bitcointalk_path: Path | None,
     include_bible: bool,
     include_quran: bool,
+    include_dictionaries: bool,
     include_bitcointalk: bool,
     include_extras: bool,
 ) -> list[tuple[str, str]]:
@@ -242,6 +277,8 @@ def build_seed_list(
 
     if include_extras:
         add_extra_candidates(seen, manifest)
+    if include_dictionaries:
+        add_dictionary_candidates(seen, manifest, dict_dir)
     if include_bitcointalk:
         resolved = resolve_bitcointalk_path(bitcointalk_path)
         if resolved is None:
@@ -285,6 +322,17 @@ def main() -> None:
         help="Arabic Quran JSON path",
     )
     parser.add_argument(
+        "--dict-dir",
+        type=Path,
+        default=DICT_DIR,
+        help="Directory containing english.txt, russian.txt, chinese.txt",
+    )
+    parser.add_argument(
+        "--no-dictionaries",
+        action="store_true",
+        help="Skip English/Russian/Chinese dictionary words",
+    )
+    parser.add_argument(
         "--bitcointalk",
         type=Path,
         default=None,
@@ -315,9 +363,11 @@ def main() -> None:
     manifest = build_seed_list(
         bible_path=args.bible,
         quran_path=args.quran,
+        dict_dir=args.dict_dir,
         bitcointalk_path=args.bitcointalk,
         include_bible=not args.no_bible,
         include_quran=not args.no_quran,
+        include_dictionaries=not args.no_dictionaries,
         include_bitcointalk=not args.no_bitcointalk,
         include_extras=not args.no_extras,
     )

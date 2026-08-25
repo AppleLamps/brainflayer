@@ -45,6 +45,7 @@ notes
 # Downloaded Bible data (fetch with scripts/fetch_bible.py)
 data/*.json
 data/quran_ar.json
+data/dict/
 data/*.hex
 data/*.blf
 data/bible_seeds.txt
