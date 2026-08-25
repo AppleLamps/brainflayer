@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
-from bible_seedgen import DEFAULT_BIBLE, generate_candidates, load_bible
+from bible_seedgen import DEFAULT_BIBLE, generate_candidates as generate_bible_candidates, load_bible
+from quran_seedgen import DEFAULT_QURAN, generate_candidates as generate_quran_candidates, load_quran
 
 DEFAULT_BITCOINTALK_CANDIDATES = [
     ROOT / "uploads" / "bitcointalk_signatures_only_2012_2016_ffa2.csv",
@@ -53,6 +54,16 @@ EXTRA_SEEDS = [
 
 # High-yield Bible modes: skip single-word and space-stripped variants (noisy).
 BIBLE_MODES = {"reference", "text", "nopunct", "ref_text", "prefix"}
+QURAN_MODES = {
+    "reference",
+    "text",
+    "nodiac",
+    "nospaces",
+    "nopunct",
+    "ref_text",
+    "prefix",
+    "bismillah",
+}
 
 
 def normalize_ws(text: str) -> str:
@@ -183,7 +194,7 @@ def add_bitcointalk_candidates(
 
 def add_bible_candidates(seen: set[str], manifest: list[tuple[str, str]], bible_path: Path) -> None:
     bible = load_bible(bible_path)
-    for candidate in generate_candidates(
+    for candidate in generate_bible_candidates(
         bible,
         modes=BIBLE_MODES,
         books=None,
@@ -191,6 +202,17 @@ def add_bible_candidates(seen: set[str], manifest: list[tuple[str, str]], bible_
         max_words=7,
     ):
         add_variant(seen, manifest, "bible", candidate)
+
+
+def add_quran_candidates(seen: set[str], manifest: list[tuple[str, str]], quran_path: Path) -> None:
+    quran = load_quran(quran_path)
+    for candidate in generate_quran_candidates(
+        quran,
+        modes=QURAN_MODES,
+        surahs=None,
+        max_words=7,
+    ):
+        add_variant(seen, manifest, "quran", candidate)
 
 
 def add_extra_candidates(seen: set[str], manifest: list[tuple[str, str]]) -> None:
@@ -209,8 +231,10 @@ def resolve_bitcointalk_path(path: Path | None) -> Path | None:
 
 def build_seed_list(
     bible_path: Path,
+    quran_path: Path,
     bitcointalk_path: Path | None,
     include_bible: bool,
+    include_quran: bool,
     include_bitcointalk: bool,
     include_extras: bool,
 ) -> list[tuple[str, str]]:
@@ -228,6 +252,8 @@ def build_seed_list(
             add_bitcointalk_candidates(seen, manifest, signatures)
     if include_bible:
         add_bible_candidates(seen, manifest, bible_path)
+    if include_quran:
+        add_quran_candidates(seen, manifest, quran_path)
 
     return manifest
 
@@ -254,6 +280,12 @@ def main() -> None:
         help="KJV JSON path",
     )
     parser.add_argument(
+        "--quran",
+        type=Path,
+        default=DEFAULT_QURAN,
+        help="Arabic Quran JSON path",
+    )
+    parser.add_argument(
         "--bitcointalk",
         type=Path,
         default=None,
@@ -263,6 +295,11 @@ def main() -> None:
         "--no-bible",
         action="store_true",
         help="Skip Bible-derived candidates",
+    )
+    parser.add_argument(
+        "--no-quran",
+        action="store_true",
+        help="Skip Arabic Quran-derived candidates",
     )
     parser.add_argument(
         "--no-bitcointalk",
@@ -278,8 +315,10 @@ def main() -> None:
 
     manifest = build_seed_list(
         bible_path=args.bible,
+        quran_path=args.quran,
         bitcointalk_path=args.bitcointalk,
         include_bible=not args.no_bible,
+        include_quran=not args.no_quran,
         include_bitcointalk=not args.no_bitcointalk,
         include_extras=not args.no_extras,
     )
