@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from bible_seedgen import DEFAULT_BIBLE, generate_candidates as generate_bible_candidates, load_bible
 from quran_seedgen import DEFAULT_QURAN, generate_candidates as generate_quran_candidates, load_quran
+from seed_variants import expand_variants
 
 DEFAULT_BITCOINTALK_CANDIDATES = [
     ROOT / "uploads" / "bitcointalk_signatures_only_2012_2016_ffa2.csv",
@@ -123,7 +124,6 @@ def add_variants(
     source: str,
     text: str,
     *,
-    include_lower: bool = True,
     include_nopunct: bool = True,
     include_truncations: bool = False,
 ) -> None:
@@ -131,18 +131,17 @@ def add_variants(
     if not base:
         return
 
-    add_variant(seen, manifest, source, base)
-    if include_lower:
-        add_variant(seen, manifest, source + ":lower", base.lower())
-    if include_nopunct:
-        nopunct = strip_punctuation(base)
-        add_variant(seen, manifest, source + ":nopunct", nopunct)
-        if include_lower:
-            add_variant(seen, manifest, source + ":nopunct_lower", nopunct.lower())
+    nopunct = strip_punctuation(base) if include_nopunct else None
+    for variant in expand_variants(base, nopunct=nopunct):
+        add_variant(seen, manifest, source, variant)
+
     if include_truncations and len(base) > 64:
         for n in (32, 64, 128, 256):
             if len(base) >= n:
-                add_variant(seen, manifest, source + f":trunc{n}", base[:n])
+                truncated = base[:n]
+                truncated_nopunct = strip_punctuation(truncated) if include_nopunct else None
+                for variant in expand_variants(truncated, nopunct=truncated_nopunct):
+                    add_variant(seen, manifest, source + f":trunc{n}", variant)
 
 
 def iter_bitcointalk(path: Path) -> list[str]:

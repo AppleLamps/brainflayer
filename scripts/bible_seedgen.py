@@ -11,6 +11,11 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable, Iterator
 
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+
+from seed_variants import expand_variants
+
 DEFAULT_BIBLE = Path(__file__).resolve().parent.parent / "data" / "kjv.json"
 
 BOOK_ALIASES = {
@@ -216,22 +221,18 @@ def generate_candidates(
 ) -> Iterator[str]:
     seen: set[str] = set()
 
-    def emit(value: str) -> Iterator[str]:
-        candidate = value.strip()
-        if not candidate or candidate in seen:
-            return
-        seen.add(candidate)
-        yield candidate
+    def emit(value: str, *, nopunct: str | None = None, nospaces: str | None = None) -> Iterator[str]:
+        for candidate in expand_variants(value, nopunct=nopunct, nospaces=nospaces):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            yield candidate
 
     for book, chapter, verse_num, text in iter_verses(bible, books, chapters):
         refs = reference_variants(book, chapter, verse_num)
         normalized = re.sub(r"\s+", " ", text).strip()
-        lower = normalized.lower()
-        upper = normalized.upper()
         no_punct = strip_punctuation(normalized)
-        no_punct_lower = no_punct.lower()
         no_spaces = re.sub(r"\s+", "", no_punct)
-        no_spaces_lower = no_spaces.lower()
         words = no_punct.split()
 
         if "reference" in modes:
@@ -239,36 +240,31 @@ def generate_candidates(
                 yield from emit(ref)
 
         if "text" in modes:
-            for candidate in (normalized, lower, upper):
-                yield from emit(candidate)
+            yield from emit(normalized)
 
         if "nopunct" in modes:
-            for candidate in (no_punct, no_punct_lower):
-                yield from emit(candidate)
+            yield from emit(normalized, nopunct=no_punct)
 
         if "nospaces" in modes:
-            for candidate in (no_spaces, no_spaces_lower):
-                yield from emit(candidate)
+            yield from emit(normalized, nopunct=no_punct, nospaces=no_spaces)
 
         if "ref_text" in modes:
             for ref in refs[:3]:
-                for body in (normalized, lower, no_punct_lower):
+                for body in (normalized, no_punct):
                     yield from emit(f"{ref} {body}")
                     yield from emit(f"{ref}{body}")
-                    yield from emit(body + ref)
+                    yield from emit(f"{body}{ref}")
 
         if "words" in modes:
             for word in words:
                 if len(word) >= 3:
                     yield from emit(word)
-                    yield from emit(word.lower())
 
         if "prefix" in modes and max_words > 0:
             prefix = " ".join(words[:max_words])
             if prefix:
                 yield from emit(prefix)
-                yield from emit(prefix.lower())
-                yield from emit(strip_punctuation(prefix).lower())
+                yield from emit(prefix, nopunct=strip_punctuation(prefix))
 
 
 def parse_books(raw: str | None) -> set[str] | None:

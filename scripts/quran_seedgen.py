@@ -11,6 +11,11 @@ import unicodedata
 from pathlib import Path
 from typing import Iterator
 
+SCRIPTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+
+from seed_variants import expand_variants
+
 DEFAULT_QURAN = Path(__file__).resolve().parent.parent / "data" / "quran_ar.json"
 
 TATWEEL = "\u0640"
@@ -90,12 +95,12 @@ def generate_candidates(
 ) -> Iterator[str]:
     seen: set[str] = set()
 
-    def emit(value: str) -> Iterator[str]:
-        candidate = value.strip()
-        if not candidate or candidate in seen:
-            return
-        seen.add(candidate)
-        yield candidate
+    def emit(value: str, *, nopunct: str | None = None, nospaces: str | None = None) -> Iterator[str]:
+        for candidate in expand_variants(value, nopunct=nopunct, nospaces=nospaces):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            yield candidate
 
     for surah_num, ayah_num, surah_name, transliteration, text in iter_ayahs(quran, surahs):
         refs = reference_variants(surah_num, ayah_num, surah_name, transliteration)
@@ -110,35 +115,36 @@ def generate_candidates(
                 yield from emit(ref)
 
         if "text" in modes:
-            yield from emit(normalized)
-            if nodiac != normalized:
-                yield from emit(nodiac)
+            yield from emit(normalized, nopunct=nodiac if nodiac != normalized else None)
 
         if "nodiac" in modes and nodiac:
             yield from emit(nodiac)
 
         if "nospaces" in modes and no_spaces:
-            yield from emit(no_spaces)
+            yield from emit(nodiac, nospaces=no_spaces)
 
         if "nopunct" in modes and nopunct:
-            yield from emit(nopunct)
+            yield from emit(nodiac, nopunct=nopunct)
 
         if "ref_text" in modes:
             for ref in refs[:4]:
                 for body in (normalized, nodiac):
                     yield from emit(f"{ref} {body}")
                     yield from emit(f"{ref}{body}")
-                    yield from emit(body + ref)
+                    yield from emit(f"{body}{ref}")
 
         if "prefix" in modes and max_words > 0 and words:
             prefix = " ".join(words[:max_words])
             yield from emit(prefix)
 
         if "bismillah" in modes and surah_num == 1 and ayah_num == 1:
-            yield from emit("بسم الله الرحمن الرحيم")
-            yield from emit("بسم الله")
-            yield from emit("bismillah")
-            yield from emit("Bismillah")
+            for phrase in (
+                "بسم الله الرحمن الرحيم",
+                "بسم الله",
+                "bismillah",
+                "Bismillah",
+            ):
+                yield from emit(phrase)
 
 
 def parse_int_set(raw: str | None) -> set[int] | None:
