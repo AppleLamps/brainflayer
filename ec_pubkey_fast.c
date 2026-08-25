@@ -14,10 +14,13 @@
 #include "secp256k1/src/libsecp256k1-config.h"
 #include "secp256k1/include/secp256k1.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "secp256k1/src/util.h"
 #include "secp256k1/src/num_impl.h"
 #include "secp256k1/src/field_impl.h"
-#include "secp256k1/src/field_10x26_impl.h"
 #include "secp256k1/src/scalar_impl.h"
 #include "secp256k1/src/group_impl.h"
 #include "secp256k1/src/ecmult_gen_impl.h"
@@ -314,13 +317,19 @@ int secp256k1_ec_pubkey_batch_init(unsigned int num) {
 }
 
 void secp256k1_ge_set_all_gej_static(int num, secp256k1_ge_t *batchpa, secp256k1_gej_t *batchpj) {
-  size_t i;
+  int i;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
   for (i = 0; i < num; i++) {
     batchaz[i] = batchpj[i].z;
   }
 
   secp256k1_fe_inv_all_var(num, batchai, batchaz);
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
   for (i = 0; i < num; i++) {
     secp256k1_ge_set_gej_zinv(&batchpa[i], &batchpj[i], &batchai[i]);
   }
@@ -389,8 +398,11 @@ int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned
 int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65], unsigned char (*sec)[32]) {
   int i;
 
-  /* generate jacobian coordinates */
-  for (i = 0; i < num; ++i) {
+  /* generate jacobian coordinates — independent per key, so OpenMP-safe */
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (i = 0; i < (int)num; ++i) {
 #ifdef USE_BL_ARITHMETIC
     secp256k1_ecmult_gen_bl(&batchpj[i], sec[i]);
 #else
@@ -402,7 +414,10 @@ int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65],
   secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
 
   /* write out formatted public key */
-  for (i = 0; i < num; ++i) {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (i = 0; i < (int)num; ++i) {
     secp256k1_fe_normalize_var(&batchpa[i].x);
     secp256k1_fe_normalize_var(&batchpa[i].y);
 

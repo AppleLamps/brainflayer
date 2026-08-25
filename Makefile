@@ -5,8 +5,11 @@ OBJ_ALGO = $(patsubst %.c,%.o,$(wildcard algo/*.c))
 OBJECTS = $(OBJ_MAIN) $(OBJ_UTIL) $(OBJ_ALGO)
 BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex
 LIBS = -lrt -lcrypto -lgmp
-CFLAGS = -O3 \
-         -flto -funsigned-char -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
+# ARCH=native uses this machine's SHA-NI/AVX2/etc. Override with ARCH=x86-64-v3
+# for a more portable binary.
+ARCH ?= native
+CFLAGS = -O3 -march=$(ARCH) -mtune=$(ARCH) -mno-avx512f -mprefer-vector-width=256 \
+         -flto -fopenmp -funsigned-char -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
          -pedantic -std=gnu99
 COMPILE = gcc $(CFLAGS)
@@ -32,7 +35,7 @@ scrypt-jane/scrypt-jane.h: .git
 	git submodule update
 
 scrypt-jane/scrypt-jane.o: scrypt-jane/scrypt-jane.h scrypt-jane/scrypt-jane.c
-	cd scrypt-jane; gcc -O3 -DSCRYPT_SALSA -DSCRYPT_SHA256 -c scrypt-jane.c -o scrypt-jane.o
+	cd scrypt-jane; gcc -O3 -march=$(ARCH) -mtune=$(ARCH) -DSCRYPT_SALSA -DSCRYPT_SHA256 -c scrypt-jane.c -o scrypt-jane.o
 
 brainflayer.o: brainflayer.c secp256k1/include/secp256k1.h
 

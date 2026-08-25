@@ -41,3 +41,22 @@ filehex
 # misc
 old
 notes
+
+# Downloaded Bible data (fetch with scripts/fetch_bible.py)
+data/*.json
+data/quran_ar.json
+data/dict/
+data/*.hex
+data/*.blf
+data/bible_seeds.txt
+data/bitcointalk_seeds*.txt
+data/bitcointalk_signatures_raw.txt
+data/seed_candidates.txt
+data/seed_candidates.manifest.tsv
+data/*_run.log
+data/addresses_to_hash160.log
+data/hex2blf.log
+data/*.tab
+data/corpora/
+data/seed_candidates_delta.txt
+!data/.gitkeep
