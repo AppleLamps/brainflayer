@@ -44,4 +44,11 @@ notes
 
 # Downloaded Bible data (fetch with scripts/fetch_bible.py)
 data/*.json
+data/*.hex
+data/*.blf
+data/bible_seeds.txt
+data/*_run.log
+data/*_run.log
+data/addresses_to_hash160.log
+data/hex2blf.log
 !data/.gitkeep
