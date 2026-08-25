@@ -16,6 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from bible_seedgen import DEFAULT_BIBLE, generate_candidates as generate_bible_candidates, load_bible
 from quran_seedgen import DEFAULT_QURAN, generate_candidates as generate_quran_candidates, load_quran
+from dict_phrases import DEFAULT_PHRASE_LENGTHS, DEFAULT_PHRASE_TOP_N, iter_dictionary_phrases
 from seed_variants import expand_variants
 
 DEFAULT_BITCOINTALK_CANDIDATES = [
@@ -28,6 +29,11 @@ DEFAULT_MANIFEST = ROOT / "data" / "seed_candidates.manifest.tsv"
 DICT_DIR = ROOT / "data" / "dict"
 DICT_FILES = {
     "en": DICT_DIR / "english.txt",
+    "ru": DICT_DIR / "russian.txt",
+    "zh": DICT_DIR / "chinese.txt",
+}
+DICT_PHRASE_FILES = {
+    "en": DICT_DIR / "english_phrase.txt",
     "ru": DICT_DIR / "russian.txt",
     "zh": DICT_DIR / "chinese.txt",
 }
@@ -237,7 +243,14 @@ def load_dictionary_words(path: Path) -> list[str]:
     return words
 
 
-def add_dictionary_candidates(seen: set[str], manifest: list[tuple[str, str]], dict_dir: Path) -> None:
+def add_dictionary_candidates(
+    seen: set[str],
+    manifest: list[tuple[str, str]],
+    dict_dir: Path,
+    phrase_top_n: dict[int, int] | None = None,
+    phrase_lengths: tuple[int, ...] = DEFAULT_PHRASE_LENGTHS,
+) -> None:
+    limits = phrase_top_n or DEFAULT_PHRASE_TOP_N
     for language, default_path in DICT_FILES.items():
         path = dict_dir / default_path.name
         if not path.exists():
@@ -250,6 +263,29 @@ def add_dictionary_candidates(seen: set[str], manifest: list[tuple[str, str]], d
         for word in words:
             for variant in expand_variants(word):
                 add_variant(seen, manifest, f"dict:{language}", variant)
+
+    for language, default_path in DICT_PHRASE_FILES.items():
+        path = dict_dir / default_path.name
+        if not path.exists():
+            path = default_path
+        words = load_dictionary_words(path)
+        if not words:
+            print(f"Warning: phrase base not found or empty: {path}", file=sys.stderr)
+            continue
+        phrase_count = 0
+        print(
+            f"Adding {language} dictionary phrases (lengths {phrase_lengths}, pools {limits})...",
+            file=sys.stderr,
+        )
+        for phrase in iter_dictionary_phrases(
+            words,
+            phrase_lengths=phrase_lengths,
+            top_n_by_length=limits,
+        ):
+            phrase_count += 1
+            for variant in expand_variants(phrase):
+                add_variant(seen, manifest, f"dict:{language}:phrase", variant)
+        print(f"  generated {phrase_count:,} base phrases for {language}", file=sys.stderr)
 
 
 def resolve_bitcointalk_path(path: Path | None) -> Path | None:
@@ -271,6 +307,8 @@ def build_seed_list(
     include_dictionaries: bool,
     include_bitcointalk: bool,
     include_extras: bool,
+    phrase_top_n: dict[int, int] | None = None,
+    phrase_lengths: tuple[int, ...] = DEFAULT_PHRASE_LENGTHS,
 ) -> list[tuple[str, str]]:
     seen: set[str] = set()
     manifest: list[tuple[str, str]] = []
@@ -278,7 +316,13 @@ def build_seed_list(
     if include_extras:
         add_extra_candidates(seen, manifest)
     if include_dictionaries:
-        add_dictionary_candidates(seen, manifest, dict_dir)
+        add_dictionary_candidates(
+            seen,
+            manifest,
+            dict_dir,
+            phrase_top_n=phrase_top_n,
+            phrase_lengths=phrase_lengths,
+        )
     if include_bitcointalk:
         resolved = resolve_bitcointalk_path(bitcointalk_path)
         if resolved is None:
@@ -330,7 +374,17 @@ def main() -> None:
     parser.add_argument(
         "--no-dictionaries",
         action="store_true",
-        help="Skip English/Russian/Chinese dictionary words",
+        help="Skip English/Russian/Chinese dictionary words and phrases",
+    )
+    parser.add_argument(
+        "--dict-phrase-lengths",
+        default="2,3,4,5",
+        help="Comma-separated dictionary phrase lengths (default: 2,3,4,5)",
+    )
+    parser.add_argument(
+        "--dict-phrase-top-n",
+        default="2:500,3:80,4:35,5:18",
+        help="Phrase pool sizes per length, e.g. 2:500,3:80,4:35,5:18",
     )
     parser.add_argument(
         "--bitcointalk",
@@ -360,6 +414,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    phrase_lengths = tuple(
+        int(part.strip())
+        for part in args.dict_phrase_lengths.split(",")
+        if part.strip()
+    )
+    phrase_top_n: dict[int, int] = {}
+    for part in args.dict_phrase_top_n.split(","):
+        if not part.strip():
+            continue
+        length_str, size_str = part.split(":", 1)
+        phrase_top_n[int(length_str.strip())] = int(size_str.strip())
+
     manifest = build_seed_list(
         bible_path=args.bible,
         quran_path=args.quran,
@@ -370,6 +436,8 @@ def main() -> None:
         include_dictionaries=not args.no_dictionaries,
         include_bitcointalk=not args.no_bitcointalk,
         include_extras=not args.no_extras,
+        phrase_top_n=phrase_top_n,
+        phrase_lengths=phrase_lengths,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

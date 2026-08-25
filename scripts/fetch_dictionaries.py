@@ -19,6 +19,10 @@ SOURCES = {
         "url": "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt",
         "output": DICT_DIR / "english.txt",
     },
+    "en_phrase": {
+        "url": "https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english.txt",
+        "output": DICT_DIR / "english_phrase.txt",
+    },
     "ru": {
         "url": "https://raw.githubusercontent.com/hingston/russian/master/100000-russian-words.txt",
         "output": DICT_DIR / "russian.txt",
@@ -43,6 +47,16 @@ def download(url: str) -> bytes:
         raise SystemExit(f"Failed to download {url}: {exc}") from exc
 
 
+def dedupe_preserve_order(words: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for word in words:
+        if word not in seen:
+            seen.add(word)
+            ordered.append(word)
+    return ordered
+
+
 def clean_english(raw: bytes) -> list[str]:
     words = []
     for line in raw.decode("utf-8", errors="replace").splitlines():
@@ -52,31 +66,61 @@ def clean_english(raw: bytes) -> list[str]:
     return sorted(set(words))
 
 
+def clean_english_phrase_base(raw: bytes) -> list[str]:
+    words = []
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        word = line.strip()
+        if len(word) >= 2 and EN_RE.fullmatch(word):
+            words.append(word.lower())
+    return dedupe_preserve_order(words)
+
+
 def clean_russian(raw: bytes) -> list[str]:
     words = []
     for line in raw.decode("utf-8", errors="replace").splitlines():
         word = line.strip()
         if len(word) >= 2 and CYRILLIC_RE.fullmatch(word):
             words.append(word)
-    return sorted(set(words))
+    return dedupe_preserve_order(words)
 
 
 def clean_chinese(raw: bytes) -> tuple[list[str], bytes]:
     payload = json.loads(raw.decode("utf-8"))
-    words: set[str] = set()
+    ranked: list[tuple[int, str]] = []
+    seen: set[str] = set()
     for entry in payload:
         simplified = entry.get("simplified", "").strip()
-        if simplified and CJK_RE.fullmatch(simplified):
-            words.add(simplified)
+        frequency = entry.get("frequency") or 999999
+        if simplified and CJK_RE.fullmatch(simplified) and simplified not in seen:
+            seen.add(simplified)
+            ranked.append((frequency, simplified))
         for form in entry.get("forms", []):
             traditional = form.get("traditional", "").strip()
-            if traditional and CJK_RE.fullmatch(traditional):
-                words.add(traditional)
-    word_list = sorted(words)
+            if traditional and CJK_RE.fullmatch(traditional) and traditional not in seen:
+                seen.add(traditional)
+                ranked.append((frequency + 1, traditional))
+    ranked.sort(key=lambda item: (item[0], len(item[1]), item[1]))
+    word_list = [word for _, word in ranked]
     return word_list, raw
 
 
+def fetch_english_phrase_base() -> None:
+    spec = SOURCES["en_phrase"]
+    DICT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Fetching English phrase base from {spec['url']}", file=sys.stderr)
+    raw = download(spec["url"])
+    words = clean_english_phrase_base(raw)
+    spec["output"].write_text("\n".join(words) + "\n", encoding="utf-8")
+    print(
+        f"Saved {len(words):,} English phrase-base words -> {spec['output']} "
+        f"({spec['output'].stat().st_size:,} bytes)",
+        file=sys.stderr,
+    )
+
+
 def fetch_language(language: str) -> None:
+    if language == "en":
+        fetch_english_phrase_base()
     spec = SOURCES[language]
     DICT_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Fetching {language} dictionary from {spec['url']}", file=sys.stderr)
@@ -93,7 +137,7 @@ def fetch_language(language: str) -> None:
         spec["output"].write_bytes(raw)
         spec["words_output"].write_text("\n".join(words) + "\n", encoding="utf-8")
         print(
-            f"Saved {len(words):,} Chinese words -> {spec['words_output']} "
+            f"Saved {len(words):,} Chinese words (frequency ordered) -> {spec['words_output']} "
             f"({spec['words_output'].stat().st_size:,} bytes)",
             file=sys.stderr,
         )
