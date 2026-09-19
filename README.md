@@ -77,6 +77,10 @@ bloom filter and ecmult table. Piped stdin uses threads instead. Extra workers
 beyond the CPU count do not help; use `-j 1` to force a single worker. The
 older `-n K/N` option still works if you want to split work across machines.
 
+The `-f` sorted hash160 file is mmap'd for verification (no per-lookup disk
+seek). Run `scripts/benchmark.sh` before/after tuning; `make USE_BL=1` enables
+alternate EC addition code—benchmark on your CPU before relying on it.
+
 Also worth noting is that brainflayer mmaps its data files in shared memory,
 so additional brainflayer processes do not use up that much additional RAM.
 

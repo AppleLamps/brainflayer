@@ -28,7 +28,10 @@ int main(int argc, char **argv) {
   char *line = NULL;
   size_t line_sz = 0;
   unsigned char *bloom, *bloomfile, *hashfile;
-  FILE *ifile = stdin, *ofile = stdout, *hfile = NULL;
+  FILE *ifile = stdin, *ofile = stdout;
+  hsearchf_ctx_t hctx;
+  memset(&hctx, 0, sizeof(hctx));
+  hctx.fd = -1;
   mmapf_ctx bloom_mmapf;
 
   if (argc < 2 || argc > 3) {
@@ -49,8 +52,13 @@ int main(int argc, char **argv) {
   bloom = bloom_mmapf.mem;
 
   if (argc == 3) {
+    int hsret;
     hashfile = argv[2];
-    hfile = fopen(hashfile, "r");
+    hsret = hsearchf_open(&hctx, hashfile);
+    if (hsret != 0) {
+      fprintf(stderr, "failed to open hash file '%s': %s\n", hashfile, strerror(hsret < 0 ? -hsret : hsret));
+      return 1;
+    }
   }
 
   while (getline(&line, &line_sz, ifile) > 0) {
@@ -78,7 +86,7 @@ int main(int argc, char **argv) {
     bit = BH18(hash.uc); if (BLOOM_GET_BIT(bit) == 0) { continue; }
     bit = BH19(hash.uc); if (BLOOM_GET_BIT(bit) == 0) { continue; }
 
-    if (hfile && !hsearchf(hfile, &hash)) {
+    if (hctx.data && !hsearchf(&hctx, &hash)) {
       //fprintf(ofile, "%s (false positive)\n", hex(hash.uc, sizeof(hash.uc), buf, sizeof(buf)));
       continue;
     }
@@ -86,6 +94,7 @@ int main(int argc, char **argv) {
     fprintf(ofile, "%s", line);
   }
 
+  hsearchf_close(&hctx);
   return 0;
 }
 

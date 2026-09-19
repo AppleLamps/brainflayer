@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libgmp-dev libssl-dev autoconf automake libtool
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Generate ecmult table
+        run: ./ecmtabgen 16 /tmp/ecmult.w16.tab
+      - name: Optimization correctness checks
+        run: ./scripts/verify_opt.sh
+        env:
+          TABLE: /tmp/ecmult.w16.tab
