@@ -518,22 +518,48 @@ static void obuf_init(FILE *fp, int is_tty) {
   obuf_cap = 1u << 20;
   obuf_len = 0;
   obuf = chkmalloc(obuf_cap);
-  if (!is_tty) {
-    setvbuf(fp, NULL, _IOFBF, 1u << 20);
+}
+
+static int obuf_write_all(int fd, const char *p, size_t n) {
+  while (n) {
+    ssize_t w = write(fd, p, n);
+    if (w < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return -1;
+    }
+    p += w;
+    n -= (size_t)w;
   }
+  return 0;
 }
 
 static void obuf_flush(void) {
-  if (obuf_len) {
-    fwrite(obuf, 1, obuf_len, obuf_fp);
-    obuf_len = 0;
+  int fd;
+  const char *p;
+  const char *end;
+  if (!obuf_len) {
+    return;
   }
+  fd = fileno(obuf_fp);
+  p = obuf;
+  end = obuf + obuf_len;
+  while (p < end) {
+    const char *nl = memchr(p, '\n', (size_t)(end - p));
+    size_t n = nl ? (size_t)(nl - p + 1) : (size_t)(end - p);
+    if (obuf_write_all(fd, p, n) < 0) {
+      break;
+    }
+    p += n;
+  }
+  obuf_len = 0;
 }
 
 static void obuf_write(const char *p, size_t n) {
   if (n >= obuf_cap) {
     obuf_flush();
-    fwrite(p, 1, n, obuf_fp);
+    obuf_write_all(fileno(obuf_fp), p, n);
     return;
   }
   if (obuf_len + n > obuf_cap) {
@@ -993,6 +1019,7 @@ int main(int argc, char **argv) {
 
   if (use_processes) {
     int w;
+    fflush(ofile);
     if (jopt > 64) {
       jopt = 64;
     }
@@ -1159,8 +1186,10 @@ int main(int argc, char **argv) {
       batch_stopped = filled;
     }
 
-    // hash public keys (parallel when this process has worker threads)
-    if (batch_stopped > 0) {
+    // Hash public keys. Generate mode hashes the batch in parallel, then
+    // formats output. Crack mode hashes and bloom-checks per key so the
+    // digest stays hot in cache (almost every candidate misses).
+    if (batch_stopped > 0 && !bloom) {
       hash_batch_job_t hjob;
       hjob.start = 0;
       hjob.end = batch_stopped;
@@ -1176,19 +1205,20 @@ int main(int argc, char **argv) {
     }
 
     if (bloom) { /* crack mode */
+      hash160_t hash160;
       for (i = 0; i < batch_stopped; ++i) {
         if (Iopt) {
           hex_encode(batch_priv[i], 32, batch_line[i]);
         }
         for (j = 0; j < n_pubhashfn; ++j) {
-          hash160_t *h = &batch_hash[i * n_pubhashfn + j];
-          if (!bloom_chk_hash160(bloom, h->ul)) {
+          pubhashfn[j].fn(&hash160, batch_upub[i]);
+          if (!bloom_chk_hash160(bloom, hash160.ul)) {
             continue;
           }
-          if (fopt && !hsearchf(&fctx, h)) {
+          if (fopt && !hsearchf(&fctx, &hash160)) {
             continue;
           }
-          fprintresult(ofile, h, pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
           ++olines;
         }
       }
@@ -1202,6 +1232,9 @@ int main(int argc, char **argv) {
                        pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
         }
       }
+    }
+    if (use_processes) {
+      obuf_flush();
     }
     // end public key processing loop
 
