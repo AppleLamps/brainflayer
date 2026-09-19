@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -53,6 +54,9 @@ int lineread_open_path(lineread_t *lr, const char *path) {
     return -e;
   }
 
+  lr->map_off = 0;
+  lr->map_end = lr->map_sz;
+
   posix_madvise((void *)lr->map, lr->map_sz, POSIX_MADV_SEQUENTIAL);
 #ifdef MADV_SEQUENTIAL
   madvise((void *)lr->map, lr->map_sz, MADV_SEQUENTIAL);
@@ -76,22 +80,90 @@ void lineread_open_fp(lineread_t *lr, FILE *fp) {
   }
 }
 
+static size_t lineread_limit(const lineread_t *lr) {
+  if (lr->map_end == 0 || lr->map_end > lr->map_sz) {
+    return lr->map_sz;
+  }
+  return lr->map_end;
+}
+
+static size_t lineread_align_nl(const lineread_t *lr, size_t off, size_t end) {
+  const char *nl;
+  if (off >= end) {
+    return end;
+  }
+  nl = memchr(lr->map + off, '\n', end - off);
+  return nl ? (size_t)(nl - lr->map) + 1 : end;
+}
+
+void lineread_partition(lineread_t *lr, int worker, int nworkers, uint64_t skip_lines) {
+  size_t start;
+  size_t end;
+  size_t span;
+  size_t a;
+  size_t b;
+
+  if (lr->map == NULL || nworkers < 1) {
+    return;
+  }
+  if (worker < 0 || worker >= nworkers) {
+    lr->map_off = lr->map_sz;
+    lr->map_end = lr->map_sz;
+    return;
+  }
+
+  start = 0;
+  end = lr->map_sz;
+  while (skip_lines && start < end) {
+    start = lineread_align_nl(lr, start, end);
+    --skip_lines;
+  }
+
+  span = end - start;
+  a = start + (size_t)(((uint64_t)span * (uint64_t)worker) / (uint64_t)nworkers);
+  if (worker + 1 == nworkers) {
+    b = end;
+  } else {
+    b = start + (size_t)(((uint64_t)span * (uint64_t)(worker + 1)) / (uint64_t)nworkers);
+  }
+  if (worker > 0) {
+    a = lineread_align_nl(lr, a, end);
+  }
+  if (worker + 1 < nworkers) {
+    b = lineread_align_nl(lr, b, end);
+  }
+  if (a > b) {
+    a = b;
+  }
+
+  lr->map_off = a;
+  lr->map_end = b;
+
+  if (b > a) {
+    posix_madvise((void *)(lr->map + a), b - a, POSIX_MADV_SEQUENTIAL);
+#ifdef MADV_SEQUENTIAL
+    madvise((void *)(lr->map + a), b - a, MADV_SEQUENTIAL);
+#endif
+  }
+}
+
 int lineread_next(lineread_t *lr, const char **line, size_t *len) {
   if (lr->map != NULL || (lr->fd >= 0 && lr->map_sz == 0 && lr->fp == NULL)) {
     const char *start;
     const char *nl;
+    size_t end = lineread_limit(lr);
 
-    if (lr->map_off >= lr->map_sz) {
+    if (lr->map_off >= end) {
       return 0;
     }
     start = lr->map + lr->map_off;
-    nl = memchr(start, '\n', lr->map_sz - lr->map_off);
+    nl = memchr(start, '\n', end - lr->map_off);
     if (nl != NULL) {
       *len = (size_t)(nl - start);
       lr->map_off = (size_t)(nl - lr->map) + 1;
     } else {
-      *len = lr->map_sz - lr->map_off;
-      lr->map_off = lr->map_sz;
+      *len = end - lr->map_off;
+      lr->map_off = end;
     }
     if (*len && start[*len - 1] == '\r') {
       --*len;

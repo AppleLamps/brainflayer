@@ -53,6 +53,18 @@ sort "${WORKDIR}/gen6.txt" -o "${WORKDIR}/gen6.sorted"
 diff -q "${WORKDIR}/gen1.sorted" "${WORKDIR}/gen4.sorted"
 diff -q "${WORKDIR}/gen1.sorted" "${WORKDIR}/gen6.sorted"
 
+echo "[*] -k without -N range-partitions the remaining file"
+printf 'skip-me\nkeep-a\nkeep-b\nkeep-c\n' > "${WORKDIR}/skip2.txt"
+"${BF}" -j 1 -k 1 -c c -i "${WORKDIR}/skip2.txt" -m "${TABLE}" -o "${WORKDIR}/skip2j1.txt"
+"${BF}" -j 4 -k 1 -c c -i "${WORKDIR}/skip2.txt" -m "${TABLE}" -o "${WORKDIR}/skip2j4.txt"
+sort "${WORKDIR}/skip2j1.txt" -o "${WORKDIR}/skip2j1.sorted"
+sort "${WORKDIR}/skip2j4.txt" -o "${WORKDIR}/skip2j4.sorted"
+diff -q "${WORKDIR}/skip2j1.sorted" "${WORKDIR}/skip2j4.sorted"
+if grep -q 'skip-me' "${WORKDIR}/skip2j4.txt"; then
+  echo "range partition processed the skipped line" >&2
+  exit 1
+fi
+
 echo "[*] incremental outputs match across worker counts"
 "${BF}" -j 1 -c c -I 0000000000000000000000000000000000000000000000000000000000000001 \
   -N 64 -m "${TABLE}" -o "${WORKDIR}/incr1.txt"

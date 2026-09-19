@@ -1,4 +1,5 @@
 /* Copyright (c) 2015 Nicolas Courtois, Guangyan Song, Ryan Castellucci, All Rights Reserved */
+#define _GNU_SOURCE
 #include "ec_pubkey_fast.h"
 
 #include <unistd.h>
@@ -6,10 +7,12 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 #include "secp256k1/src/libsecp256k1-config.h"
 #include "secp256k1/include/secp256k1.h"
@@ -106,7 +109,24 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
   }
   prec = prec_mmapf.mem;
 
-  if (filename) { return 0; }
+  if (filename) {
+    /* Keep the window table from being pushed out by a large wordlist scan. */
+    {
+      struct rlimit rl;
+      if (getrlimit(RLIMIT_MEMLOCK, &rl) == 0 && rl.rlim_cur < prec_sz) {
+        rlim_t want = (rlim_t)prec_sz;
+        if (rl.rlim_max == RLIM_INFINITY || rl.rlim_max >= want) {
+          rl.rlim_cur = want;
+          setrlimit(RLIMIT_MEMLOCK, &rl);
+        }
+      }
+      mlock(prec, prec_sz);
+    }
+#ifdef MADV_HUGEPAGE
+    madvise(prec, prec_sz, MADV_HUGEPAGE);
+#endif
+    return 0;
+  }
 
   table = malloc(n_windows*n_values*sizeof(secp256k1_gej_t));
 
@@ -190,6 +210,52 @@ static inline void extract_windows(const unsigned char *seckey, unsigned int *bi
   }
 }
 
+#ifdef USE_BL_ARITHMETIC
+static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a, const secp256k1_ge_t *b, secp256k1_fe_t *rzr);
+#endif
+
+/* Mixed add specialized for G-window tables: b is never infinity, rzr unused.
+   always_inline so multi-lane ecmult can overlap independent field muls. */
+static inline __attribute__((always_inline))
+void ecmult_add_ge(secp256k1_gej_t *r, const secp256k1_ge_t *b) {
+#ifdef USE_BL_ARITHMETIC
+  secp256k1_gej_add_ge_bl(r, r, b, NULL);
+#else
+  secp256k1_fe_t z12, u1, u2, s1, s2, h, i, i2, h2, h3, t;
+  if (__builtin_expect(r->infinity, 0)) {
+    secp256k1_gej_set_ge(r, b);
+    return;
+  }
+  r->infinity = 0;
+  secp256k1_fe_sqr(&z12, &r->z);
+  u1 = r->x; secp256k1_fe_normalize_weak(&u1);
+  secp256k1_fe_mul(&u2, &b->x, &z12);
+  s1 = r->y; secp256k1_fe_normalize_weak(&s1);
+  secp256k1_fe_mul(&s2, &b->y, &z12); secp256k1_fe_mul(&s2, &s2, &r->z);
+  secp256k1_fe_negate(&h, &u1, 1); secp256k1_fe_add(&h, &u2);
+  secp256k1_fe_negate(&i, &s1, 1); secp256k1_fe_add(&i, &s2);
+  if (__builtin_expect(secp256k1_fe_normalizes_to_zero_var(&h), 0)) {
+    if (secp256k1_fe_normalizes_to_zero_var(&i)) {
+      secp256k1_gej_double_var(r, r, NULL);
+    } else {
+      r->infinity = 1;
+    }
+    return;
+  }
+  secp256k1_fe_sqr(&i2, &i);
+  secp256k1_fe_sqr(&h2, &h);
+  secp256k1_fe_mul(&h3, &h, &h2);
+  secp256k1_fe_mul(&r->z, &r->z, &h);
+  secp256k1_fe_mul(&t, &u1, &h2);
+  r->x = t; secp256k1_fe_mul_int(&r->x, 2); secp256k1_fe_add(&r->x, &h3);
+  secp256k1_fe_negate(&r->x, &r->x, 3); secp256k1_fe_add(&r->x, &i2);
+  secp256k1_fe_negate(&r->y, &r->x, 5); secp256k1_fe_add(&r->y, &t);
+  secp256k1_fe_mul(&r->y, &r->y, &i);
+  secp256k1_fe_mul(&h3, &h3, &s1); secp256k1_fe_negate(&h3, &h3, 1);
+  secp256k1_fe_add(&r->y, &h3);
+#endif
+}
+
 static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
   unsigned int bits[256] = {0};
   int j;
@@ -204,7 +270,34 @@ static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *secke
     if (j + 1 < n_windows) {
       __builtin_prefetch(&prec[(j + 1) * nv + bits[j + 1]], 0, 3);
     }
-    secp256k1_gej_add_ge_var(r, r, &prec[j * nv + bits[j]], NULL);
+    ecmult_add_ge(r, &prec[j * nv + bits[j]]);
+  }
+}
+
+#ifndef ECMULT_LANES
+#define ECMULT_LANES 8
+#endif
+
+/* Overlap ECMULT_LANES independent k*G chains so field-mul latency hides. */
+static void ecmult_gen_lanes(secp256k1_gej_t *out, unsigned char (*sec)[32], int n) {
+  unsigned int bits[ECMULT_LANES][256];
+  int lane, j;
+  int nv = n_values;
+  int nw = n_windows;
+
+  for (lane = 0; lane < n; ++lane) {
+    extract_windows(sec[lane], bits[lane]);
+    secp256k1_gej_set_ge(&out[lane], &prec[bits[lane][0]]);
+  }
+  for (j = 1; j < nw; ++j) {
+    int base = j * nv;
+    int next = (j + 1) * nv;
+    for (lane = 0; lane < n; ++lane) {
+      if (j + 1 < nw) {
+        __builtin_prefetch(&prec[next + bits[lane][j + 1]], 0, 3);
+      }
+      ecmult_add_ge(&out[lane], &prec[base + bits[lane][j]]);
+    }
   }
 }
 
@@ -286,11 +379,7 @@ int secp256k1_ec_pubkey_create_precomp(unsigned char *pub_chr, int *pub_chr_sz, 
   secp256k1_gej_t pj;
   secp256k1_ge_t p;
 
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_ecmult_gen_bl(&pj, seckey);
-#else
   secp256k1_ecmult_gen2(&pj, seckey);
-#endif
   secp256k1_ge_set_gej(&p, &pj);
 
   *pub_chr_sz = 65;
@@ -323,11 +412,23 @@ int secp256k1_ec_pubkey_set_threads(unsigned int n) {
   return batch_threads;
 }
 
+static void *batch_aligned(size_t bytes) {
+  void *p = NULL;
+  size_t n = (bytes + 63u) & ~(size_t)63u;
+  if (n == 0) {
+    n = 64;
+  }
+  if (posix_memalign(&p, 64, n) != 0) {
+    return NULL;
+  }
+  return p;
+}
+
 int secp256k1_ec_pubkey_batch_init(unsigned int num) {
-  if (!batchpj) { batchpj = malloc(sizeof(secp256k1_gej_t)*num); }
-  if (!batchpa) { batchpa = malloc(sizeof(secp256k1_ge_t)*num);  }
-  if (!batchaz) { batchaz = malloc(sizeof(secp256k1_fe_t)*num);  }
-  if (!batchai) { batchai = malloc(sizeof(secp256k1_fe_t)*num);  }
+  if (!batchpj) { batchpj = batch_aligned(sizeof(secp256k1_gej_t) * num); }
+  if (!batchpa) { batchpa = batch_aligned(sizeof(secp256k1_ge_t) * num);  }
+  if (!batchaz) { batchaz = batch_aligned(sizeof(secp256k1_fe_t) * num);  }
+  if (!batchai) { batchai = batch_aligned(sizeof(secp256k1_fe_t) * num);  }
   if (batchpj == NULL || batchpa == NULL || batchaz == NULL || batchai == NULL) {
     return 1;
   } else {
@@ -343,18 +444,19 @@ typedef struct {
 } batch_job_t;
 
 static void ecmult_one(secp256k1_gej_t *out, const unsigned char *sec) {
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_ecmult_gen_bl(out, sec);
-#else
   secp256k1_ecmult_gen2(out, sec);
-#endif
 }
 
 static void *batch_gen_worker(void *arg) {
   const batch_job_t *job = arg;
-  int i;
-  for (i = job->start; i < job->end; ++i) {
-    ecmult_one(&batchpj[i], job->sec[i]);
+  int i = job->start;
+  int end = job->end;
+  while (i + ECMULT_LANES <= end) {
+    ecmult_gen_lanes(&batchpj[i], &job->sec[i], ECMULT_LANES);
+    i += ECMULT_LANES;
+  }
+  if (i < end) {
+    ecmult_gen_lanes(&batchpj[i], &job->sec[i], end - i);
   }
   return NULL;
 }
@@ -531,13 +633,8 @@ int secp256k1_ec_pubkey_incr_init(unsigned char *seckey, unsigned int add) {
 
   pubkey_incr_ctx.n = add;
 
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_ecmult_gen_bl(&pubkey_incr_ctx.pubj, seckey);
-  secp256k1_ecmult_gen_bl(&pubkey_incr_ctx.incj, incr_priv);
-#else
   secp256k1_ecmult_gen2(&pubkey_incr_ctx.pubj, seckey);
   secp256k1_ecmult_gen2(&pubkey_incr_ctx.incj, incr_priv);
-#endif
   secp256k1_ge_set_gej(&pubkey_incr_ctx.inc, &pubkey_incr_ctx.incj);
 
   return 0;
@@ -568,11 +665,7 @@ int secp256k1_ec_pubkey_incr(unsigned char *pub_chr, int *pub_chr_sz, unsigned c
 
 void * secp256k1_ec_priv_to_gej(unsigned char *priv) {
   secp256k1_gej_t *gej = malloc(sizeof(secp256k1_gej_t));
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_ecmult_gen_bl(gej, priv);
-#else
   secp256k1_ecmult_gen2(gej, priv);
-#endif
 
   return gej;
 }

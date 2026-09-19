@@ -21,6 +21,8 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/sysinfo.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
 
 #include "ripemd160_256.h"
 #include "sha256_fast.h"
@@ -315,7 +317,7 @@ typedef struct priv_batch_job_s {
   int start;
   int end;
   int *batch_line_read;
-  char **batch_line;
+  const char **batch_src;
   unsigned char (*batch_priv)[32];
   int xopt;
   unsigned char *unhexed;
@@ -328,7 +330,7 @@ static int derive_batch_priv(int idx, priv_batch_job_t *proto) {
     if (proto->batch_line_read[idx] / 2 > (int)proto->unhexed_sz) {
       return -1;
     }
-    unhex((unsigned char *)proto->batch_line[idx],
+    unhex((unsigned char *)proto->batch_src[idx],
           (size_t)proto->batch_line_read[idx],
           proto->unhexed,
           proto->unhexed_sz);
@@ -339,7 +341,7 @@ static int derive_batch_priv(int idx, priv_batch_job_t *proto) {
     }
   } else {
     if (proto->input2priv_fn(proto->batch_priv[idx],
-                             (unsigned char *)proto->batch_line[idx],
+                             (unsigned char *)proto->batch_src[idx],
                              (size_t)proto->batch_line_read[idx]) != 0) {
       return -1;
     }
@@ -572,8 +574,8 @@ static void obuf_write(const char *p, size_t n) {
 static void fprintresult(FILE *f, hash160_t *hash,
                                 unsigned char compressed,
                                 unsigned char *type,
-                                unsigned char *input) {
-  size_t inlen = strlen((char *)input);
+                                const unsigned char *input,
+                                size_t inlen) {
   size_t typelen = strlen((char *)type);
   size_t need = 40 + 1 + 1 + 1 + typelen + 1 + inlen + 1;
   char stack[512];
@@ -639,6 +641,7 @@ void usage(unsigned char *name) {
                              must be a power of 2 (default/max: %d)\n\
  -j N                        worker count (default: number of CPUs)\n\
                              uses processes for files/-I, threads for stdin\n\
+                             file workers split the mmap by byte range\n\
                              (use 1 to disable parallelism)\n\
  -w WINDOW_SIZE              window size for ecmult table (default: 16)\n\
                              uses about 3 * 2^w KiB memory on startup, but\n\
@@ -688,11 +691,13 @@ int main(int argc, char **argv) {
 
   int batch_stopped = -1;
   char *batch_line[BATCH_MAX];
+  const char *batch_src[BATCH_MAX];
   size_t batch_line_sz[BATCH_MAX];
   int batch_line_read[BATCH_MAX];
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
   memset(batch_line, 0, sizeof(batch_line));
+  memset(batch_src, 0, sizeof(batch_src));
   memset(batch_line_sz, 0, sizeof(batch_line_sz));
 
   while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:N:B:j:")) != -1) {
@@ -839,6 +844,7 @@ int main(int argc, char **argv) {
     // do this to give the processing loop somewhere to write to in incr mode
     for (i = 0; i < BATCH_MAX; ++i) {
       batch_line[i] = Iopt;
+      batch_src[i] = (const char *)Iopt;
     }
     unhex(Iopt, sizeof(priv)*2, priv, sizeof(priv));
     skipping = 1;
@@ -962,6 +968,17 @@ int main(int argc, char **argv) {
       bail(1, "got NULL pointer trying to set up bloom filter\n");
     }
     bloom = bloom_mmapf.mem;
+    {
+      struct rlimit rl;
+      if (getrlimit(RLIMIT_MEMLOCK, &rl) == 0 && rl.rlim_cur < BLOOM_SIZE) {
+        rlim_t want = (rlim_t)BLOOM_SIZE;
+        if (rl.rlim_max == RLIM_INFINITY || rl.rlim_max >= want) {
+          rl.rlim_cur = want;
+          setrlimit(RLIMIT_MEMLOCK, &rl);
+        }
+      }
+      mlock(bloom, BLOOM_SIZE);
+    }
   }
 
   if (fopt) {
@@ -1056,6 +1073,15 @@ int main(int argc, char **argv) {
       uint64_t extra = Nopt % (uint64_t)jopt;
       Nopt = Nopt / (uint64_t)jopt + (worker_id < (int)extra ? 1 : 0);
     }
+    /* Full-file runs: each worker reads a disjoint mmap span instead of
+       scanning the whole file and skipping 3/4 of the lines. Keep the
+       older line-stripe path for -N/-n so the first N lines stay correct. */
+    if (iopt && lreader.map != NULL && Nopt == ~0ULL) {
+      lineread_partition(&lreader, worker_id, jopt, kopt);
+      nopt_mod = 0;
+      skipping = 0;
+      kopt = 0;
+    }
     if (vopt) {
       fprintf(stderr, "[*] workers: %d processes (id %d)\n", jopt, worker_id);
     }
@@ -1105,6 +1131,7 @@ int main(int argc, char **argv) {
     } else {
       priv_batch_job_t pjob;
       int filled = 0;
+      int mmap_lines = (lreader.map != NULL);
 
       for (i = 0; i < this_batch;) {
         const char *line;
@@ -1123,12 +1150,18 @@ int main(int argc, char **argv) {
             if (idx % (uint64_t)nopt_mod != (uint64_t)nopt_rem) { continue; }
           }
         }
-        if (ensure_line_buf(&batch_line[i], &batch_line_sz[i], linelen + 1) != 0) {
-          bail(1, "realloc failed while reading input\n");
+        if (mmap_lines) {
+          batch_src[i] = line;
+          batch_line_read[i] = (int)linelen;
+        } else {
+          if (ensure_line_buf(&batch_line[i], &batch_line_sz[i], linelen + 1) != 0) {
+            bail(1, "realloc failed while reading input\n");
+          }
+          memcpy(batch_line[i], line, linelen);
+          batch_line[i][linelen] = 0;
+          batch_src[i] = batch_line[i];
+          batch_line_read[i] = (int)linelen;
         }
-        memcpy(batch_line[i], line, linelen);
-        batch_line[i][linelen] = 0;
-        batch_line_read[i] = (int)linelen;
         ++i;
       }
       filled = i;
@@ -1137,7 +1170,7 @@ int main(int argc, char **argv) {
         pjob.start = 0;
         pjob.end = filled;
         pjob.batch_line_read = batch_line_read;
-        pjob.batch_line = batch_line;
+        pjob.batch_src = batch_src;
         pjob.batch_priv = batch_priv;
         pjob.xopt = xopt;
         pjob.unhexed = unhexed;
@@ -1147,17 +1180,6 @@ int main(int argc, char **argv) {
         if (!use_processes && jopt > 1 && !xopt && filled >= 512) {
           int priv_threads = jopt > 2 ? 2 : jopt;
           run_priv_batch_jobs(filled, priv_threads, pjob);
-          for (i = 0, batch_stopped = 0; i < filled; ++i) {
-            if (batch_line_read[i] > -1) {
-              if (batch_stopped != i) {
-                batch_line_read[batch_stopped] = batch_line_read[i];
-                batch_line[batch_stopped] = batch_line[i];
-                memcpy(batch_priv[batch_stopped], batch_priv[i], 32);
-              }
-              ++batch_stopped;
-            }
-          }
-          filled = batch_stopped;
         } else {
           for (i = 0; i < filled; ++i) {
             if (derive_batch_priv(i, &pjob) != 0) {
@@ -1165,18 +1187,19 @@ int main(int argc, char **argv) {
               batch_line_read[i] = -1;
             }
           }
-          for (i = 0, batch_stopped = 0; i < filled; ++i) {
-            if (batch_line_read[i] > -1) {
-              if (batch_stopped != i) {
-                batch_line_read[batch_stopped] = batch_line_read[i];
-                batch_line[batch_stopped] = batch_line[i];
-                memcpy(batch_priv[batch_stopped], batch_priv[i], 32);
-              }
-              ++batch_stopped;
-            }
-          }
-          filled = batch_stopped;
         }
+        for (i = 0, batch_stopped = 0; i < filled; ++i) {
+          if (batch_line_read[i] > -1) {
+            if (batch_stopped != i) {
+              batch_line_read[batch_stopped] = batch_line_read[i];
+              batch_src[batch_stopped] = batch_src[i];
+              batch_line[batch_stopped] = batch_line[i];
+              memcpy(batch_priv[batch_stopped], batch_priv[i], 32);
+            }
+            ++batch_stopped;
+          }
+        }
+        filled = batch_stopped;
 
         if (filled > 0) {
           secp256k1_ec_pubkey_batch_create((unsigned int)filled, batch_upub, batch_priv);
@@ -1207,8 +1230,15 @@ int main(int argc, char **argv) {
     if (bloom) { /* crack mode */
       hash160_t hash160;
       for (i = 0; i < batch_stopped; ++i) {
+        const unsigned char *in;
+        size_t inlen;
         if (Iopt) {
           hex_encode(batch_priv[i], 32, batch_line[i]);
+          in = (unsigned char *)batch_line[i];
+          inlen = 64;
+        } else {
+          in = (const unsigned char *)batch_src[i];
+          inlen = (size_t)batch_line_read[i];
         }
         for (j = 0; j < n_pubhashfn; ++j) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
@@ -1218,18 +1248,25 @@ int main(int argc, char **argv) {
           if (fopt && !hsearchf(&fctx, &hash160)) {
             continue;
           }
-          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, in, inlen);
           ++olines;
         }
       }
     } else { /* generate mode */
       for (i = 0; i < batch_stopped; ++i) {
+        const unsigned char *in;
+        size_t inlen;
         if (Iopt) {
           hex_encode(batch_priv[i], 32, batch_line[i]);
+          in = (unsigned char *)batch_line[i];
+          inlen = 64;
+        } else {
+          in = (const unsigned char *)batch_src[i];
+          inlen = (size_t)batch_line_read[i];
         }
         for (j = 0; j < n_pubhashfn; ++j) {
           fprintresult(ofile, &batch_hash[i * n_pubhashfn + j],
-                       pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
+                       pubhashfn[j].id, modestr, in, inlen);
         }
       }
     }
