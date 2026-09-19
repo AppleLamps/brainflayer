@@ -22,12 +22,15 @@ python3 ../scripts/make_wordlist.py -o wordlist.txt
 ```
 
 That downloads password/dictionary sources into `wordlist-src/` (cached) and
-writes unique printable-ASCII phrases to `wordlist.txt` (about 3 million
-lines). Use it as:
+writes printable-ASCII phrases to `wordlist.txt`. The default run is **over
+1 billion** candidates (about 20 GiB): a ~3 million quality prefix plus
+ranked two-word combinations of 36k dictionary words (space, hyphen, concat,
+underscore). Use `--core-only` for the prefix alone, or pipe:
 
 ```
-brainflayer -v -b keys.blf -m /tmp/ecmult.w16.tab -i wordlist.txt
+python3 ../scripts/make_wordlist.py -o - | brainflayer -v -b keys.blf -m /tmp/ecmult.w16.tab
 ```
 
 Do not feed this file through `case_variants.py`; the generator already emits
-title/upper/first-cap forms. Full 2^n case permutation is only for tiny lists.
+title/upper/first-cap forms on the quality prefix. Full 2^n case permutation
+is only for tiny lists.

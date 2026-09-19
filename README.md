@@ -178,18 +178,21 @@ brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i phrases.txt
 ```
 
 Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
-words, curated public-domain phrases, light mutations, two- and three-word
-pairs). This is meant for `brainflayer -i`; do **not** run `case_variants.py`
-on it — full case explosion of a multi-million-line list is unusable.
+words, curated public-domain phrases, light mutations, then ranked two-word
+combinations). Default size is **over 1 billion** candidates (~20 GiB on
+disk). This is meant for `brainflayer -i`; do **not** run `case_variants.py`
+on it — full case explosion of this list is unusable.
 
 ```
-make wordlist                 # writes data/wordlist.txt (~3 million unique phrases)
-brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i data/wordlist.txt
-# or: make crack-wordlist     # same, writes data/wordlist.hits
+make wordlist                 # writes data/wordlist.txt (>1 billion phrases, ~20 GiB)
+# make wordlist-core          # quality prefix only (~3 million)
+python3 scripts/make_wordlist.py -o - | brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab
+# or: make crack-wordlist     # file-backed; writes data/wordlist.hits
 ```
 
 `make wordlist` downloads public lists into `data/wordlist-src/` (gitignored)
-and mixes `data/seeds.txt`. Rebuilds are incremental on those files only.
+and mixes `data/seeds.txt`. The billion-scale tail is streamed (no 1B-entry
+RAM set). Rebuilds are incremental on those files only.
 
 `make` uses `-std=gnu11`, LTO, and `-march=native` so the binary can use SHA-NI
 and AVX2 on the build machine. Override with `ARCH=x86-64-v3` for a more

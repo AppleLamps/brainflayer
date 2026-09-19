@@ -27,7 +27,7 @@ ifneq ($(filter native x86-64 x86-64-v2 x86-64-v3 x86-64-v4,$(ARCH)),)
 SECP_CONFIG += --with-asm=x86_64
 endif
 
-.PHONY: all clean test bench fetch-dataset test-dataset wordlist crack-wordlist
+.PHONY: all clean test bench fetch-dataset test-dataset wordlist wordlist-core crack-wordlist
 
 all: $(BINARIES)
 
@@ -107,6 +107,9 @@ data/wordlist.txt: data/seeds.txt scripts/make_wordlist.py
 	python3 scripts/make_wordlist.py -o data/wordlist.txt
 
 wordlist: data/wordlist.txt
+
+wordlist-core:
+	python3 scripts/make_wordlist.py --core-only -o data/wordlist.txt
 
 crack-wordlist: all $(TABLE) data/wordlist.txt
 	@test -f data/keys.blf || { echo "missing data/keys.blf; run make fetch-dataset" >&2; exit 1; }
