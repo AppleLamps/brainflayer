@@ -168,6 +168,29 @@ make test          # correctness checks (needs ~a few seconds)
 # make bench       # throughput; writes rates to stdout
 ```
 
+To crack against the private [AppleLampsX/brain](https://huggingface.co/datasets/AppleLampsX/brain) bloom filter:
+
+```
+export HF_TOKEN=...          # read access to the dataset
+make fetch-dataset           # downloads data/keys.blf (~512 MiB)
+make test-dataset            # load + negative-control + throughput
+brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i phrases.txt
+```
+
+Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
+words, curated public-domain phrases, light mutations, two- and three-word
+pairs). This is meant for `brainflayer -i`; do **not** run `case_variants.py`
+on it — full case explosion of a multi-million-line list is unusable.
+
+```
+make wordlist                 # writes data/wordlist.txt (~3 million unique phrases)
+brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i data/wordlist.txt
+# or: make crack-wordlist     # same, writes data/wordlist.hits
+```
+
+`make wordlist` downloads public lists into `data/wordlist-src/` (gitignored)
+and mixes `data/seeds.txt`. Rebuilds are incremental on those files only.
+
 `make` uses `-std=gnu11`, LTO, and `-march=native` so the binary can use SHA-NI
 and AVX2 on the build machine. Override with `ARCH=x86-64-v3` for a more
 portable binary. `make USE_BL=1` enables alternate EC addition code—benchmark
