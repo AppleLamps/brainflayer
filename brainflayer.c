@@ -12,6 +12,8 @@
 
 #include <openssl/sha.h>
 
+#include <pthread.h>
+
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -300,6 +302,111 @@ inline static void priv2pub(unsigned char *upub, const unsigned char *priv) {
 }
 
 
+typedef struct priv_batch_job_s {
+  int start;
+  int end;
+  int *batch_line_read;
+  char **batch_line;
+  unsigned char (*batch_priv)[32];
+  int xopt;
+  unsigned char *unhexed;
+  size_t unhexed_sz;
+  int (*input2priv_fn)(unsigned char *, unsigned char *, size_t);
+} priv_batch_job_t;
+
+static int derive_batch_priv(int idx, priv_batch_job_t *proto) {
+  if (proto->xopt) {
+    if (proto->batch_line_read[idx] / 2 > (int)proto->unhexed_sz) {
+      return -1;
+    }
+    unhex((unsigned char *)proto->batch_line[idx],
+          (size_t)proto->batch_line_read[idx],
+          proto->unhexed,
+          proto->unhexed_sz);
+    if (proto->input2priv_fn(proto->batch_priv[idx],
+                             proto->unhexed,
+                             (size_t)proto->batch_line_read[idx] / 2) != 0) {
+      return -1;
+    }
+  } else {
+    if (proto->input2priv_fn(proto->batch_priv[idx],
+                             (unsigned char *)proto->batch_line[idx],
+                             (size_t)proto->batch_line_read[idx]) != 0) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
+static void *priv_batch_worker(void *arg) {
+  priv_batch_job_t *job = arg;
+  int i;
+  for (i = job->start; i < job->end; ++i) {
+    if (derive_batch_priv(i, job) != 0) {
+      job->batch_line_read[i] = -1;
+    }
+  }
+  return NULL;
+}
+
+static int run_priv_batch_jobs(int count, int threads, priv_batch_job_t proto) {
+  pthread_t th[64];
+  priv_batch_job_t jobs[64];
+  int created[64];
+  int T = threads;
+  int t, chunk;
+
+  if (T < 2 || count < 16) {
+    for (t = 0; t < count; ++t) {
+      if (derive_batch_priv(t, &proto) != 0) {
+        proto.batch_line_read[t] = -1;
+      }
+    }
+    return count;
+  }
+  if (T > 64) {
+    T = 64;
+  }
+  if (T > count) {
+    T = count;
+  }
+  chunk = (count + T - 1) / T;
+  for (t = 0; t < T; ++t) {
+    created[t] = 0;
+    jobs[t] = proto;
+    jobs[t].start = t * chunk;
+    jobs[t].end = jobs[t].start + chunk;
+    if (jobs[t].end > count) {
+      jobs[t].end = count;
+    }
+    if (jobs[t].start >= jobs[t].end) {
+      T = t;
+      break;
+    }
+    if (t == 0) {
+      continue;
+    }
+    if (pthread_create(&th[t], NULL, priv_batch_worker, &jobs[t]) == 0) {
+      created[t] = 1;
+    } else {
+      priv_batch_worker(&jobs[t]);
+    }
+  }
+  priv_batch_worker(&jobs[0]);
+  for (t = 1; t < T; ++t) {
+    if (created[t]) {
+      pthread_join(th[t], NULL);
+    }
+  }
+
+  for (t = 0, chunk = 0; t < count; ++t) {
+    if (proto.batch_line_read[t] > -1) {
+      ++chunk;
+    }
+  }
+  return chunk;
+}
+
 inline static void fprintresult(FILE *f, hash160_t *hash,
                                 unsigned char compressed,
                                 unsigned char *type,
@@ -367,7 +474,9 @@ void usage(unsigned char *name) {
 int main(int argc, char **argv) {
   FILE *ifile = stdin;
   FILE *ofile = stdout;
-  FILE *ffile = NULL;
+  hsearchf_ctx_t fctx;
+  memset(&fctx, 0, sizeof(fctx));
+  fctx.fd = -1;
 
   int ret, c, i, j;
 
@@ -670,11 +779,13 @@ int main(int argc, char **argv) {
   }
 
   if (fopt) {
+    int hsret;
     if (!bopt) {
       bail(1, "The '-f' option must be used with a bloom filter\n");
     }
-    if ((ffile = fopen(fopt, "r")) == NULL) {
-      bail(1, "failed to open '%s' for reading: %s\n", fopt, strerror(errno));
+    hsret = hsearchf_open(&fctx, (const char *)fopt);
+    if (hsret != 0) {
+      bail(1, "failed to mmap hash160 file '%s': %s\n", fopt, strerror(hsret < 0 ? -hsret : hsret));
     }
   }
 
@@ -760,14 +871,6 @@ int main(int argc, char **argv) {
       }
       posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
     }
-    if (fopt) {
-      if (ffile != NULL) {
-        fclose(ffile);
-      }
-      if ((ffile = fopen(fopt, "r")) == NULL) {
-        bail(1, "failed to reopen '%s' for reading: %s\n", fopt, strerror(errno));
-      }
-    }
     if (Nopt != ~0ULL) {
       uint64_t extra = Nopt % (uint64_t)jopt;
       Nopt = Nopt / (uint64_t)jopt + (worker_id < (int)extra ? 1 : 0);
@@ -819,8 +922,12 @@ int main(int argc, char **argv) {
 
       batch_stopped = this_batch;
     } else {
+      priv_batch_job_t pjob;
+      int filled = 0;
+
       for (i = 0; i < this_batch;) {
-        if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)-1) > -1) {
+        int linelen;
+        if ((linelen = (int)getline(&batch_line[i], &batch_line_sz[i], ifile) - 1) > -1) {
           if (skipping) {
             ++raw_lines;
             if (kopt && raw_lines < kopt) { continue; }
@@ -835,34 +942,63 @@ int main(int argc, char **argv) {
         } else {
           break;
         }
-        batch_line[i][batch_line_read[i]] = 0;
-        if (xopt) {
-          if (batch_line_read[i] / 2 > unhexed_sz) {
-            unhexed_sz = batch_line_read[i];
-            unhexed = chkrealloc(unhexed, unhexed_sz);
-          }
-          // rewrite the input line from hex
-          unhex(batch_line[i], batch_line_read[i], unhexed, unhexed_sz);
-          if (input2priv(batch_priv[i], unhexed, batch_line_read[i]/2) != 0) {
-            fprintf(stderr, "input2priv failed! continuing...\n");
-            continue;
-          }
-        } else {
-          if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) != 0) {
-            fprintf(stderr, "input2priv failed! continuing...\n");
-            continue;
-          }
-        }
+        batch_line_read[i] = linelen;
+        batch_line[i][linelen] = 0;
         ++i;
       }
+      filled = i;
 
-      // batch compute the public keys
-      if (i > 0) {
-        secp256k1_ec_pubkey_batch_create(i, batch_upub, batch_priv);
+      if (filled > 0) {
+        pjob.start = 0;
+        pjob.end = filled;
+        pjob.batch_line_read = batch_line_read;
+        pjob.batch_line = batch_line;
+        pjob.batch_priv = batch_priv;
+        pjob.xopt = xopt;
+        pjob.unhexed = unhexed;
+        pjob.unhexed_sz = unhexed_sz;
+        pjob.input2priv_fn = input2priv;
+
+        if (!use_processes && jopt > 1 && !xopt && filled >= 512) {
+          int priv_threads = jopt > 2 ? 2 : jopt;
+          run_priv_batch_jobs(filled, priv_threads, pjob);
+          for (i = 0, batch_stopped = 0; i < filled; ++i) {
+            if (batch_line_read[i] > -1) {
+              if (batch_stopped != i) {
+                batch_line_read[batch_stopped] = batch_line_read[i];
+                batch_line[batch_stopped] = batch_line[i];
+                memcpy(batch_priv[batch_stopped], batch_priv[i], 32);
+              }
+              ++batch_stopped;
+            }
+          }
+          filled = batch_stopped;
+        } else {
+          for (i = 0; i < filled; ++i) {
+            if (derive_batch_priv(i, &pjob) != 0) {
+              fprintf(stderr, "input2priv failed! continuing...\n");
+              batch_line_read[i] = -1;
+            }
+          }
+          for (i = 0, batch_stopped = 0; i < filled; ++i) {
+            if (batch_line_read[i] > -1) {
+              if (batch_stopped != i) {
+                batch_line_read[batch_stopped] = batch_line_read[i];
+                batch_line[batch_stopped] = batch_line[i];
+                memcpy(batch_priv[batch_stopped], batch_priv[i], 32);
+              }
+              ++batch_stopped;
+            }
+          }
+          filled = batch_stopped;
+        }
+
+        if (filled > 0) {
+          secp256k1_ec_pubkey_batch_create((unsigned int)filled, batch_upub, batch_priv);
+        }
       }
 
-      // save ending value from read loop
-      batch_stopped = i;
+      batch_stopped = filled;
     }
 
     // loop over the public keys
@@ -873,7 +1009,7 @@ int main(int argc, char **argv) {
           if (!bloom_chk_hash160(bloom, hash160.ul)) {
             continue;
           }
-          if (fopt && !hsearchf(ffile, &hash160)) {
+          if (fopt && !hsearchf(&fctx, &hash160)) {
             continue;
           }
           if (tty) { fprintf(ofile, "\033[0K"); }
@@ -971,9 +1107,11 @@ int main(int argc, char **argv) {
         rc = 1;
       }
     }
+    hsearchf_close(&fctx);
     return rc;
   }
 
+  hsearchf_close(&fctx);
   return 0;
 }
 

@@ -1,0 +1,8 @@
+# brainflayer benchmark 2026-09-19T19:51:14Z
+# TABLE=/tmp/ecmult.w16.tab BF=/workspace/brainflayer
+generate_stdin_j1	138259.42
+generate_stdin_j4	242834.38
+generate_file_j4	144321.16
+generate_compressed_j4	188382.25
+incremental_j4	231356.17
+crack_verify_f_j4	40515.96

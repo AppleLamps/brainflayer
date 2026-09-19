@@ -8,11 +8,14 @@ LIBS = -lrt -lcrypto -lgmp -pthread
 # ARCH=native uses this machine's SHA-NI/AVX2/etc. Override with ARCH=x86-64-v3
 # for a more portable binary.
 ARCH ?= native
+# Optional: make USE_BL=1 — faster EC adds on some CPUs (verify with scripts/benchmark.sh)
+USE_BL ?= 0
+BL_FLAGS = $(if $(filter 1,$(USE_BL)),-DUSE_BL_ARITHMETIC,)
 CFLAGS = -O3 -pthread -march=$(ARCH) -mtune=$(ARCH) \
          -flto -fomit-frame-pointer -funsigned-char \
          -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
-         -pedantic -std=gnu99
+         -pedantic -std=gnu99 $(BL_FLAGS)
 COMPILE = gcc $(CFLAGS)
 
 all: $(BINARIES)
@@ -24,7 +27,7 @@ all: $(BINARIES)
 secp256k1/.libs/libsecp256k1.a: .git
 	git submodule init
 	git submodule update
-	cd secp256k1; make distclean || true
+	cd secp256k1; make distclean 2>/dev/null || true
 	cd secp256k1; ./autogen.sh
 	cd secp256k1; ./configure
 	cd secp256k1; make
