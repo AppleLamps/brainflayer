@@ -73,9 +73,10 @@ their output to it.
 
 Brainflayer keeps every CPU busy with `-j` (default: one worker per CPU).
 File and incremental (`-I`) runs fork worker processes that share the mmap'd
-bloom filter and ecmult table. Piped stdin uses threads instead. Extra workers
-beyond the CPU count do not help; use `-j 1` to force a single worker. The
-older `-n K/N` option still works if you want to split work across machines.
+bloom filter, ecmult table, and input file. Piped stdin uses threads and a
+buffered reader instead. Extra workers beyond the CPU count do not help; use
+`-j 1` to force a single worker. The older `-n K/N` option still works if you
+want to split work across machines.
 
 The `-f` sorted hash160 file is mmap'd for verification (no per-lookup disk
 seek). Run `scripts/benchmark.sh` before/after tuning; `make USE_BL=1` enables
@@ -150,16 +151,29 @@ Building
 
 Should compile on Linux with `make` provided you have the required devel libs
 installed (at least openssl and gmp are required along with libsecp256k1's
-build dependencies). I really need to learn autotools. If you file an issue
-about a build failure in libsecp256k1 I will close it.
+build dependencies).
 
 Dependencies should install with
 
 ```
-apt install build-essential libgmp-dev libssl-dev
+apt install build-essential libgmp-dev libssl-dev autoconf automake libtool
 ```
 
-Supported build target is currently Ubuntu 20.04 on amd64/x86_64. Issues with
+Then:
+
+```
+git submodule update --init --recursive
+make -j"$(nproc)"
+make test          # correctness checks (needs ~a few seconds)
+# make bench       # throughput; writes rates to stdout
+```
+
+`make` uses `-std=gnu11`, LTO, and `-march=native` so the binary can use SHA-NI
+and AVX2 on the build machine. Override with `ARCH=x86-64-v3` for a more
+portable binary. `make USE_BL=1` enables alternate EC addition code—benchmark
+on your CPU before relying on it.
+
+Supported build targets are Ubuntu 22.04 and 24.04 on amd64/x86_64. Issues with
 building for other platforms probably won’t be fixed. In particular, Kali Linux
 is *not* supported. Support for operating systems other than Linux would require
 extensive refactoring of Brainflayer's memory optimizations and is not happening.

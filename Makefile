@@ -1,6 +1,7 @@
-HEADERS = bloom.h crack.h hash160.h warpwallet.h
+HEADERS = bloom.h hash160.h warpwallet.h sha256_fast.h lineread.h hex.h
 OBJ_MAIN = brainflayer.o hex2blf.o blfchk.o ecmtabgen.o hexln.o filehex.o
-OBJ_UTIL = hex.o bloom.o mmapf.o hsearchf.o ec_pubkey_fast.o ripemd160_256.o dldummy.o
+OBJ_UTIL = hex.o bloom.o mmapf.o hsearchf.o ec_pubkey_fast.o ripemd160_256.o \
+           dldummy.o sha256_fast.o lineread.o
 OBJ_ALGO = $(patsubst %.c,%.o,$(wildcard algo/*.c))
 OBJECTS = $(OBJ_MAIN) $(OBJ_UTIL) $(OBJ_ALGO)
 BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex
@@ -11,12 +12,22 @@ ARCH ?= native
 # Optional: make USE_BL=1 — faster EC adds on some CPUs (verify with scripts/benchmark.sh)
 USE_BL ?= 0
 BL_FLAGS = $(if $(filter 1,$(USE_BL)),-DUSE_BL_ARITHMETIC,)
+TABLE ?= /tmp/ecmult.w16.tab
 CFLAGS = -O3 -pthread -march=$(ARCH) -mtune=$(ARCH) \
-         -flto -fomit-frame-pointer -funsigned-char \
+         -flto=auto -fomit-frame-pointer -funsigned-char \
+         -fno-math-errno \
          -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
-         -pedantic -std=gnu99 $(BL_FLAGS)
+         -Wno-deprecated-declarations \
+         -pedantic -std=gnu11 -MMD -MP $(BL_FLAGS)
 COMPILE = gcc $(CFLAGS)
+
+SECP_CONFIG = --disable-shared --enable-static --with-field=64bit --with-scalar=64bit
+ifneq ($(filter native x86-64 x86-64-v2 x86-64-v3 x86-64-v4,$(ARCH)),)
+SECP_CONFIG += --with-asm=x86_64
+endif
+
+.PHONY: all clean test bench
 
 all: $(BINARIES)
 
@@ -24,24 +35,22 @@ all: $(BINARIES)
 	@echo 'This does not look like a cloned git repo. Unable to fetch submodules.'
 	@false
 
-secp256k1/.libs/libsecp256k1.a: .git
-	git submodule init
-	git submodule update
+secp256k1/include/secp256k1.h:
+	git submodule update --init secp256k1
+
+secp256k1/.libs/libsecp256k1.a: secp256k1/include/secp256k1.h
 	cd secp256k1; make distclean 2>/dev/null || true
 	cd secp256k1; ./autogen.sh
-	cd secp256k1; ./configure
+	cd secp256k1; ./configure $(SECP_CONFIG)
 	cd secp256k1; make
 
-secp256k1/include/secp256k1.h: secp256k1/.libs/libsecp256k1.a
-
-scrypt-jane/scrypt-jane.h: .git
-	git submodule init
-	git submodule update
+scrypt-jane/scrypt-jane.h:
+	git submodule update --init scrypt-jane
 
 scrypt-jane/scrypt-jane.o: scrypt-jane/scrypt-jane.h scrypt-jane/scrypt-jane.c
 	cd scrypt-jane; gcc -O3 -march=$(ARCH) -mtune=$(ARCH) -DSCRYPT_SALSA -DSCRYPT_SHA256 -c scrypt-jane.c -o scrypt-jane.o
 
-brainflayer.o: brainflayer.c secp256k1/include/secp256k1.h
+brainflayer.o: brainflayer.c secp256k1/.libs/libsecp256k1.a
 
 algo/warpwallet.o: algo/warpwallet.c scrypt-jane/scrypt-jane.h
 
@@ -49,7 +58,7 @@ algo/brainwalletio.o: algo/brainwalletio.c scrypt-jane/scrypt-jane.h
 
 algo/brainv2.o: algo/brainv2.c scrypt-jane/scrypt-jane.h
 
-ec_pubkey_fast.o: ec_pubkey_fast.c secp256k1/include/secp256k1.h
+ec_pubkey_fast.o: ec_pubkey_fast.c secp256k1/.libs/libsecp256k1.a
 	$(COMPILE) -Wno-unused-function -c $< -o $@
 
 %.o: %.c
@@ -61,7 +70,7 @@ hexln: hexln.o hex.o
 blfchk: blfchk.o hex.o bloom.o mmapf.o hsearchf.o
 	$(COMPILE) $^ $(LIBS) -o $@
 
-hex2blf: hex2blf.o hex.o bloom.o mmapf.o
+hex2blf: hex2blf.o hex.o bloom.o mmapf.o lineread.o
 	$(COMPILE) $^ $(LIBS) -lm -o $@
 
 ecmtabgen: ecmtabgen.o mmapf.o ec_pubkey_fast.o
@@ -74,5 +83,20 @@ brainflayer: brainflayer.o $(OBJ_UTIL) $(OBJ_ALGO) \
              secp256k1/.libs/libsecp256k1.a scrypt-jane/scrypt-jane.o
 	$(COMPILE) $^ $(LIBS) -o $@
 
+tests/test_sha256: tests/test_sha256.c sha256_fast.o sha256_fast.h
+	$(COMPILE) -I. tests/test_sha256.c sha256_fast.o -lcrypto -o $@
+
+$(TABLE): ecmtabgen
+	./ecmtabgen 16 "$(TABLE)"
+
+test: all tests/test_sha256 $(TABLE)
+	./tests/test_sha256
+	TABLE="$(TABLE)" ./scripts/verify_opt.sh
+
+bench: all $(TABLE)
+	TABLE="$(TABLE)" ./scripts/benchmark.sh
+
 clean:
-	rm -f $(BINARIES) $(OBJECTS)
+	rm -f $(BINARIES) $(OBJECTS) $(OBJECTS:.o=.d) tests/test_sha256 tests/test_sha256.d
+
+-include $(OBJECTS:.o=.d)
