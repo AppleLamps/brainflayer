@@ -760,6 +760,14 @@ int main(int argc, char **argv) {
       }
       posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
     }
+    if (fopt) {
+      if (ffile != NULL) {
+        fclose(ffile);
+      }
+      if ((ffile = fopen(fopt, "r")) == NULL) {
+        bail(1, "failed to reopen '%s' for reading: %s\n", fopt, strerror(errno));
+      }
+    }
     if (Nopt != ~0ULL) {
       uint64_t extra = Nopt % (uint64_t)jopt;
       Nopt = Nopt / (uint64_t)jopt + (worker_id < (int)extra ? 1 : 0);
@@ -816,7 +824,13 @@ int main(int argc, char **argv) {
           if (skipping) {
             ++raw_lines;
             if (kopt && raw_lines < kopt) { continue; }
-            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) { continue; }
+            if (nopt_mod) {
+              /* Stripe remaining lines after -k so worker 0 gets the first
+                 unskipped line. Absolute-line modulus would send -k 1 -N 1
+                 to line 5 instead of line 2 when -j 4. */
+              uint64_t idx = (uint64_t)raw_lines - kopt;
+              if (idx % (uint64_t)nopt_mod != (uint64_t)nopt_rem) { continue; }
+            }
           }
         } else {
           break;

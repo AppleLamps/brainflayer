@@ -42,9 +42,23 @@ sort "${WORKDIR}/incr1.txt" -o "${WORKDIR}/incr1.sorted"
 sort "${WORKDIR}/incr4.txt" -o "${WORKDIR}/incr4.sorted"
 diff -q "${WORKDIR}/incr1.sorted" "${WORKDIR}/incr4.sorted"
 
+echo "[*] -k/-N with multiple workers starts at the first unskipped line"
+printf 'skip-me\nkeep-me\nignore-a\nignore-b\nignore-c\n' > "${WORKDIR}/skip.txt"
+"${BF}" -j 4 -k 1 -N 1 -c c -i "${WORKDIR}/skip.txt" -m "${TABLE}" -o "${WORKDIR}/skip.out"
+if ! grep -q ':keep-me$' "${WORKDIR}/skip.out"; then
+  echo "expected keep-me after -k 1 -N 1, got:" >&2
+  cat "${WORKDIR}/skip.out" >&2
+  exit 1
+fi
+if grep -qE 'skip-me|ignore-' "${WORKDIR}/skip.out"; then
+  echo "processed the wrong line for -k 1 -N 1 -j 4" >&2
+  cat "${WORKDIR}/skip.out" >&2
+  exit 1
+fi
+
 echo "[*] crack mode recovers planted phrases"
 # The generate file is hash:type:algo:input; keep unique hash160s for the first 4 phrases.
-cut -d: -f1 "${WORKDIR}/gen1.txt" | head -n 8 | sort -u > "${WORKDIR}/hashes.hex"
+head -n 8 "${WORKDIR}/gen1.txt" | cut -d: -f1 | sort -u > "${WORKDIR}/hashes.hex"
 "${HEX2BLF}" "${WORKDIR}/hashes.hex" "${WORKDIR}/test.blf" >/dev/null
 "${BF}" -j 4 -c uc -b "${WORKDIR}/test.blf" -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/hits.txt"
 hits="$(wc -l < "${WORKDIR}/hits.txt")"
