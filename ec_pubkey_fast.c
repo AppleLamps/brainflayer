@@ -214,48 +214,6 @@ static inline void extract_windows(const unsigned char *seckey, unsigned int *bi
 static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a, const secp256k1_ge_t *b, secp256k1_fe_t *rzr);
 #endif
 
-/* Mixed add specialized for G-window tables: b is never infinity, rzr unused.
-   always_inline so multi-lane ecmult can overlap independent field muls. */
-static inline __attribute__((always_inline))
-void ecmult_add_ge(secp256k1_gej_t *r, const secp256k1_ge_t *b) {
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_gej_add_ge_bl(r, r, b, NULL);
-#else
-  secp256k1_fe_t z12, u1, u2, s1, s2, h, i, i2, h2, h3, t;
-  if (__builtin_expect(r->infinity, 0)) {
-    secp256k1_gej_set_ge(r, b);
-    return;
-  }
-  r->infinity = 0;
-  secp256k1_fe_sqr(&z12, &r->z);
-  u1 = r->x; secp256k1_fe_normalize_weak(&u1);
-  secp256k1_fe_mul(&u2, &b->x, &z12);
-  s1 = r->y; secp256k1_fe_normalize_weak(&s1);
-  secp256k1_fe_mul(&s2, &b->y, &z12); secp256k1_fe_mul(&s2, &s2, &r->z);
-  secp256k1_fe_negate(&h, &u1, 1); secp256k1_fe_add(&h, &u2);
-  secp256k1_fe_negate(&i, &s1, 1); secp256k1_fe_add(&i, &s2);
-  if (__builtin_expect(secp256k1_fe_normalizes_to_zero_var(&h), 0)) {
-    if (secp256k1_fe_normalizes_to_zero_var(&i)) {
-      secp256k1_gej_double_var(r, r, NULL);
-    } else {
-      r->infinity = 1;
-    }
-    return;
-  }
-  secp256k1_fe_sqr(&i2, &i);
-  secp256k1_fe_sqr(&h2, &h);
-  secp256k1_fe_mul(&h3, &h, &h2);
-  secp256k1_fe_mul(&r->z, &r->z, &h);
-  secp256k1_fe_mul(&t, &u1, &h2);
-  r->x = t; secp256k1_fe_mul_int(&r->x, 2); secp256k1_fe_add(&r->x, &h3);
-  secp256k1_fe_negate(&r->x, &r->x, 3); secp256k1_fe_add(&r->x, &i2);
-  secp256k1_fe_negate(&r->y, &r->x, 5); secp256k1_fe_add(&r->y, &t);
-  secp256k1_fe_mul(&r->y, &r->y, &i);
-  secp256k1_fe_mul(&h3, &h3, &s1); secp256k1_fe_negate(&h3, &h3, 1);
-  secp256k1_fe_add(&r->y, &h3);
-#endif
-}
-
 static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
   unsigned int bits[256] = {0};
   int j;
@@ -270,34 +228,11 @@ static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *secke
     if (j + 1 < n_windows) {
       __builtin_prefetch(&prec[(j + 1) * nv + bits[j + 1]], 0, 3);
     }
-    ecmult_add_ge(r, &prec[j * nv + bits[j]]);
-  }
-}
-
-#ifndef ECMULT_LANES
-#define ECMULT_LANES 8
+#ifdef USE_BL_ARITHMETIC
+    secp256k1_gej_add_ge_bl(r, r, &prec[j * nv + bits[j]], NULL);
+#else
+    secp256k1_gej_add_ge_var(r, r, &prec[j * nv + bits[j]], NULL);
 #endif
-
-/* Overlap ECMULT_LANES independent k*G chains so field-mul latency hides. */
-static void ecmult_gen_lanes(secp256k1_gej_t *out, unsigned char (*sec)[32], int n) {
-  unsigned int bits[ECMULT_LANES][256];
-  int lane, j;
-  int nv = n_values;
-  int nw = n_windows;
-
-  for (lane = 0; lane < n; ++lane) {
-    extract_windows(sec[lane], bits[lane]);
-    secp256k1_gej_set_ge(&out[lane], &prec[bits[lane][0]]);
-  }
-  for (j = 1; j < nw; ++j) {
-    int base = j * nv;
-    int next = (j + 1) * nv;
-    for (lane = 0; lane < n; ++lane) {
-      if (j + 1 < nw) {
-        __builtin_prefetch(&prec[next + bits[lane][j + 1]], 0, 3);
-      }
-      ecmult_add_ge(&out[lane], &prec[base + bits[lane][j]]);
-    }
   }
 }
 
@@ -449,14 +384,9 @@ static void ecmult_one(secp256k1_gej_t *out, const unsigned char *sec) {
 
 static void *batch_gen_worker(void *arg) {
   const batch_job_t *job = arg;
-  int i = job->start;
-  int end = job->end;
-  while (i + ECMULT_LANES <= end) {
-    ecmult_gen_lanes(&batchpj[i], &job->sec[i], ECMULT_LANES);
-    i += ECMULT_LANES;
-  }
-  if (i < end) {
-    ecmult_gen_lanes(&batchpj[i], &job->sec[i], end - i);
+  int i;
+  for (i = job->start; i < job->end; ++i) {
+    ecmult_one(&batchpj[i], job->sec[i]);
   }
   return NULL;
 }

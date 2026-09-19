@@ -641,7 +641,7 @@ void usage(unsigned char *name) {
                              must be a power of 2 (default/max: %d)\n\
  -j N                        worker count (default: number of CPUs)\n\
                              uses processes for files/-I, threads for stdin\n\
-                             file workers split the mmap by byte range\n\
+                             small files are range-split; huge files stripe\n\
                              (use 1 to disable parallelism)\n\
  -w WINDOW_SIZE              window size for ecmult table (default: 16)\n\
                              uses about 3 * 2^w KiB memory on startup, but\n\
@@ -1073,10 +1073,12 @@ int main(int argc, char **argv) {
       uint64_t extra = Nopt % (uint64_t)jopt;
       Nopt = Nopt / (uint64_t)jopt + (worker_id < (int)extra ? 1 : 0);
     }
-    /* Full-file runs: each worker reads a disjoint mmap span instead of
-       scanning the whole file and skipping 3/4 of the lines. Keep the
-       older line-stripe path for -N/-n so the first N lines stay correct. */
-    if (iopt && lreader.map != NULL && Nopt == ~0ULL) {
+    /* Full-file runs on small inputs: each worker reads a disjoint mmap
+       span. Huge wordlists stay line-striped so all workers share the
+       same cached pages instead of faulting four regions of a file that
+       does not fit in RAM. -N/-n keep the older first-N-lines path. */
+    if (iopt && lreader.map != NULL && Nopt == ~0ULL &&
+        lreader.map_sz < (256ul << 20)) {
       lineread_partition(&lreader, worker_id, jopt, kopt);
       nopt_mod = 0;
       skipping = 0;
