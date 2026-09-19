@@ -44,9 +44,12 @@ tests/test_sha256
 old
 notes
 
-# Hugging Face bloom filter (AppleLampsX/brain)
+# Hugging Face bloom filter (AppleLampsX/brain) and exact hash160s (AppleLampsX/h160)
 data/*.blf
 data/*.blf.gz
+data/all.hex.gz
+data/h160.bin
+data/h160.bin.tmp
 
 # Generated wordlist (rebuild with: make wordlist)
 data/wordlist.txt

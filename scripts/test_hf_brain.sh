@@ -88,4 +88,30 @@ if [[ -s "${WORKDIR}/bench.hits" ]]; then
   exit 1
 fi
 
+H160="${H160:-${ROOT}/data/h160.bin}"
+if [[ -f "${H160}" ]]; then
+  echo "[*] exact hash160 file present; verify -f rejects bloom false positives"
+  python3 "${ROOT}/scripts/h160_lookup.py" "${H160}" \
+    0000000000000000000000000000000000000000 \
+    ffffffffffffffffffffffffffffffffffffffff
+  if python3 "${ROOT}/scripts/h160_lookup.py" "${H160}" \
+      5d3a136dda11e1616e72416e7c9d7581863aecdf; then
+    echo "unexpected: bloom-FP hash160 is in ${H160}" >&2
+    exit 1
+  fi
+  printf 'custom hardship\n' > "${WORKDIR}/fp.txt"
+  "${BF}" -j 1 -c uc -b "${BLF}" -i "${WORKDIR}/fp.txt" -m "${TABLE}" -o "${WORKDIR}/fp-bloom.hits"
+  if [[ ! -s "${WORKDIR}/fp-bloom.hits" ]]; then
+    echo "expected bloom hit for custom hardship (false positive probe)" >&2
+    exit 1
+  fi
+  "${BF}" -j 1 -c uc -b "${BLF}" -f "${H160}" -i "${WORKDIR}/fp.txt" -m "${TABLE}" -o "${WORKDIR}/fp-exact.hits"
+  if [[ -s "${WORKDIR}/fp-exact.hits" ]]; then
+    echo "-f did not suppress bloom false positive:" >&2
+    cat "${WORKDIR}/fp-exact.hits" >&2
+    exit 1
+  fi
+  echo "[+] -f against AppleLampsX/h160 suppressed the bloom false positive"
+fi
+
 echo "[+] AppleLampsX/brain bloom checks passed"

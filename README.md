@@ -168,14 +168,18 @@ make test          # correctness checks (needs ~a few seconds)
 # make bench       # throughput; writes rates to stdout
 ```
 
-To crack against the private [AppleLampsX/brain](https://huggingface.co/datasets/AppleLampsX/brain) bloom filter:
+To crack against the private funded-key datasets:
 
 ```
-export HF_TOKEN=...          # read access to the dataset
-make fetch-dataset           # downloads data/keys.blf (~512 MiB)
-make test-dataset            # load + negative-control + throughput
-brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i phrases.txt
+export HF_TOKEN=...          # read access to AppleLampsX/brain and AppleLampsX/h160
+make fetch-dataset           # keys.blf bloom + h160.bin exact list
+make test-dataset            # load + negative-control + -f false-positive check
+brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab -i phrases.txt
 ```
+
+`keys.blf` is a 512 MiB bloom (~90M hash160s). `h160.bin` is the exact sorted
+list (90,379,448 records) from [AppleLampsX/h160](https://huggingface.co/datasets/AppleLampsX/h160).
+Always pass `-f` or bloom hits can be false positives.
 
 Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
 words, curated public-domain phrases, light mutations, then ranked two-word
@@ -186,8 +190,8 @@ on it — full case explosion of this list is unusable.
 ```
 make wordlist                 # writes data/wordlist.txt (>1 billion phrases, ~20 GiB)
 # make wordlist-core          # quality prefix only (~3 million)
-python3 scripts/make_wordlist.py -o - | brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab
-# or: make crack-wordlist     # file-backed; writes data/wordlist.hits
+python3 scripts/make_wordlist.py -o - | brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab
+# or: make crack-wordlist     # file-backed with -f; writes data/wordlist.hits
 ```
 
 `make wordlist` downloads public lists into `data/wordlist-src/` (gitignored)
