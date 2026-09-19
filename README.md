@@ -71,13 +71,14 @@ does *not* have is generating candidate passwords/passphrases. There are plenty
 of other great tools that do that, and brainflayer is happy to have you pipe
 their output to it.
 
-Unfortunately, brainflayer is not currently multithreaded. If you want to have
-it keep multiple cores busy, you'll have to come up with a way to distribute
-the work yourself (brainflayer's -n and -k options may help). In my testing,
-brainflayer benefits significantly from hyperthreading, so you may want to
-run two copies per physical core. Also worth noting is that brainflayer mmaps
-its data files in shared memory, so additional brainflayer processes do not
-use up that much additional RAM.
+Brainflayer keeps every CPU busy with `-j` (default: one worker per CPU).
+File and incremental (`-I`) runs fork worker processes that share the mmap'd
+bloom filter and ecmult table. Piped stdin uses threads instead. Extra workers
+beyond the CPU count do not help; use `-j 1` to force a single worker. The
+older `-n K/N` option still works if you want to split work across machines.
+
+Also worth noting is that brainflayer mmaps its data files in shared memory,
+so additional brainflayer processes do not use up that much additional RAM.
 
 While not strictly required, it is *highly* recommended to use the following
 options:

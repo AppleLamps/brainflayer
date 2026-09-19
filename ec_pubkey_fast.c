@@ -14,10 +14,12 @@
 #include "secp256k1/src/libsecp256k1-config.h"
 #include "secp256k1/include/secp256k1.h"
 
+#include <pthread.h>
+#include <stdint.h>
+
 #include "secp256k1/src/util.h"
 #include "secp256k1/src/num_impl.h"
 #include "secp256k1/src/field_impl.h"
-#include "secp256k1/src/field_10x26_impl.h"
 #include "secp256k1/src/scalar_impl.h"
 #include "secp256k1/src/group_impl.h"
 #include "secp256k1/src/ecmult_gen_impl.h"
@@ -156,26 +158,53 @@ static inline unsigned int extract_window(const unsigned char *seckey,
   unsigned int byte_offset = bit_offset >> 3;
   unsigned int shift = bit_offset & 7;
   uint64_t value = 0;
+  unsigned int remain = 32 - byte_offset;
+  unsigned int n = remain < 5 ? remain : 5;
 
-  for (unsigned int i = 0; i < 5 && i <= 31 - byte_offset; ++i) {
+  for (unsigned int i = 0; i < n; ++i) {
     value |= (uint64_t)seckey[31 - byte_offset - i] << (i * 8);
   }
 
   return (unsigned int)((value >> shift) & ((1ULL << width) - 1));
 }
 
-static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
-  r->infinity = 1;
-
-  for (int j = 0; j < n_windows; j++) {
+static inline void extract_windows(const unsigned char *seckey, unsigned int *bits) {
+  int j;
+  if (WINDOW_SIZE == 16 && remmining == 0) {
+    for (j = 0; j < 16; ++j) {
+      bits[j] = (unsigned int)seckey[31 - 2 * j] |
+                ((unsigned int)seckey[30 - 2 * j] << 8);
+    }
+    return;
+  }
+  if (WINDOW_SIZE == 8 && remmining == 0) {
+    for (j = 0; j < 32; ++j) {
+      bits[j] = seckey[31 - j];
+    }
+    return;
+  }
+  for (j = 0; j < n_windows; ++j) {
     unsigned int width = (j == n_windows - 1 && remmining != 0)
       ? remmining : WINDOW_SIZE;
-    unsigned int bits = extract_window(seckey, j * WINDOW_SIZE, width);
-#if 1
-    secp256k1_gej_add_ge_var(r, r, &prec[j*n_values + bits], NULL);
-#else
-    secp256k1_gej_add_ge(r, r, &prec[j*n_values + bits]);
-#endif
+    bits[j] = extract_window(seckey, j * WINDOW_SIZE, width);
+  }
+}
+
+static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
+  unsigned int bits[256] = {0};
+  int j;
+  int nv = n_values;
+
+  extract_windows(seckey, bits);
+  secp256k1_gej_set_ge(r, &prec[bits[0]]);
+  if (n_windows > 1) {
+    __builtin_prefetch(&prec[nv + bits[1]], 0, 3);
+  }
+  for (j = 1; j < n_windows; ++j) {
+    if (j + 1 < n_windows) {
+      __builtin_prefetch(&prec[(j + 1) * nv + bits[j + 1]], 0, 3);
+    }
+    secp256k1_gej_add_ge_var(r, r, &prec[j * nv + bits[j]], NULL);
   }
 }
 
@@ -241,13 +270,14 @@ static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a
 }
 
 static void secp256k1_ecmult_gen_bl(secp256k1_gej_t *r, const unsigned char *seckey){
-  r->infinity = 1;
+  unsigned int bits[256] = {0};
+  int j;
+  int nv = n_values;
 
-  for (int j = 0; j < n_windows; j++) {
-    unsigned int width = (j == n_windows - 1 && remmining != 0)
-      ? remmining : WINDOW_SIZE;
-    unsigned int bits = extract_window(seckey, j * WINDOW_SIZE, width);
-    secp256k1_gej_add_ge_bl(r, r, &prec[j*n_values + bits], NULL);
+  extract_windows(seckey, bits);
+  secp256k1_gej_set_ge(r, &prec[bits[0]]);
+  for (j = 1; j < n_windows; ++j) {
+    secp256k1_gej_add_ge_bl(r, r, &prec[j * nv + bits[j]], NULL);
   }
 }
 #endif
@@ -278,6 +308,20 @@ static secp256k1_gej_t *batchpj;
 static secp256k1_ge_t  *batchpa;
 static secp256k1_fe_t  *batchaz;
 static secp256k1_fe_t  *batchai;
+static int batch_threads = 1;
+
+#define BF_MAX_THREADS 64
+
+int secp256k1_ec_pubkey_set_threads(unsigned int n) {
+  if (n < 1) {
+    n = 1;
+  }
+  if (n > BF_MAX_THREADS) {
+    n = BF_MAX_THREADS;
+  }
+  batch_threads = (int)n;
+  return batch_threads;
+}
 
 int secp256k1_ec_pubkey_batch_init(unsigned int num) {
   if (!batchpj) { batchpj = malloc(sizeof(secp256k1_gej_t)*num); }
@@ -291,8 +335,91 @@ int secp256k1_ec_pubkey_batch_init(unsigned int num) {
   }
 }
 
+typedef struct {
+  int start;
+  int end;
+  unsigned char (*sec)[32];
+  unsigned char (*pub)[65];
+} batch_job_t;
+
+static void ecmult_one(secp256k1_gej_t *out, const unsigned char *sec) {
+#ifdef USE_BL_ARITHMETIC
+  secp256k1_ecmult_gen_bl(out, sec);
+#else
+  secp256k1_ecmult_gen2(out, sec);
+#endif
+}
+
+static void *batch_gen_worker(void *arg) {
+  const batch_job_t *job = arg;
+  int i;
+  for (i = job->start; i < job->end; ++i) {
+    ecmult_one(&batchpj[i], job->sec[i]);
+  }
+  return NULL;
+}
+
+static void *batch_write_worker(void *arg) {
+  const batch_job_t *job = arg;
+  int i;
+  for (i = job->start; i < job->end; ++i) {
+    secp256k1_fe_normalize_var(&batchpa[i].x);
+    secp256k1_fe_normalize_var(&batchpa[i].y);
+    job->pub[i][0] = 0x04;
+    secp256k1_fe_get_b32(job->pub[i] +  1, &batchpa[i].x);
+    secp256k1_fe_get_b32(job->pub[i] + 33, &batchpa[i].y);
+  }
+  return NULL;
+}
+
+static void run_jobs(int num, void *(*worker)(void *), batch_job_t proto) {
+  pthread_t threads[BF_MAX_THREADS];
+  batch_job_t jobs[BF_MAX_THREADS];
+  int created[BF_MAX_THREADS];
+  int T = batch_threads;
+  int t, chunk;
+
+  if (T < 2 || num < 8) {
+    proto.start = 0;
+    proto.end = num;
+    worker(&proto);
+    return;
+  }
+  if (T > num) {
+    T = num;
+  }
+  chunk = (num + T - 1) / T;
+  for (t = 0; t < T; ++t) {
+    created[t] = 0;
+    jobs[t] = proto;
+    jobs[t].start = t * chunk;
+    jobs[t].end = jobs[t].start + chunk;
+    if (jobs[t].end > num) {
+      jobs[t].end = num;
+    }
+    if (jobs[t].start >= jobs[t].end) {
+      T = t;
+      break;
+    }
+    if (t == 0) {
+      continue;
+    }
+    if (pthread_create(&threads[t], NULL, worker, &jobs[t]) == 0) {
+      created[t] = 1;
+    } else {
+      worker(&jobs[t]);
+    }
+  }
+  worker(&jobs[0]);
+  for (t = 1; t < T; ++t) {
+    if (created[t]) {
+      pthread_join(threads[t], NULL);
+    }
+  }
+}
+
 void secp256k1_ge_set_all_gej_static(int num, secp256k1_ge_t *batchpa, secp256k1_gej_t *batchpj) {
-  size_t i;
+  int i;
   for (i = 0; i < num; i++) {
     batchaz[i] = batchpj[i].z;
   }
@@ -306,88 +433,46 @@ void secp256k1_ge_set_all_gej_static(int num, secp256k1_ge_t *batchpa, secp256k1
 
 // call secp256k1_ec_pubkey_batch_init first or you get segfaults
 int secp256k1_ec_pubkey_batch_incr(unsigned int num, unsigned int skip, unsigned char (*pub)[65], unsigned char (*sec)[32], unsigned char start[32]) {
-  // some of the values could be reused between calls, but dealing with the data
-  // structures is a pain, and with a reasonable batch size, the perf difference
-  // is tiny
   int i;
-
   unsigned char b32[32];
-
   secp256k1_scalar_t priv, incr_s;
   secp256k1_gej_t temp;
   secp256k1_ge_t incr_a;
+  batch_job_t proto;
 
-  /* load staring private key */
   secp256k1_scalar_set_b32(&priv, start, NULL);
-
-  /* fill first private */
-  secp256k1_scalar_get_b32(sec[0], &priv);
-
-  /* set up increments */
   secp256k1_scalar_set_int(&incr_s, skip);
+  secp256k1_scalar_get_b32(sec[0], &priv);
   secp256k1_scalar_get_b32(b32, &incr_s);
-
-#ifdef USE_BL_ARITHMETIC
-  secp256k1_ecmult_gen_bl(&temp, b32);
-  secp256k1_ecmult_gen_bl(&batchpj[0], start);
-#else
-  secp256k1_ecmult_gen2(&temp, b32);
-  secp256k1_ecmult_gen2(&batchpj[0], start);
-#endif
-
-  /* get affine public point for incrementing */
+  ecmult_one(&temp, b32);
+  ecmult_one(&batchpj[0], start);
   secp256k1_ge_set_gej_var(&incr_a, &temp);
-
-  for (i = 1; i < num; ++i) {
-    /* increment and write private key */
+  for (i = 1; i < (int)num; ++i) {
     secp256k1_scalar_add(&priv, &priv, &incr_s);
     secp256k1_scalar_get_b32(sec[i], &priv);
-
-    /* increment public key */
     secp256k1_gej_add_ge_var(&batchpj[i], &batchpj[i-1], &incr_a, NULL);
   }
 
-  /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static((int)num, batchpa, batchpj);
 
-  /* write out formatted public key */
-  for (i = 0; i < num; ++i) {
-    secp256k1_fe_normalize_var(&batchpa[i].x);
-    secp256k1_fe_normalize_var(&batchpa[i].y);
-
-    pub[i][0] = 0x04;
-    secp256k1_fe_get_b32(pub[i] +  1, &batchpa[i].x);
-    secp256k1_fe_get_b32(pub[i] + 33, &batchpa[i].y);
-  }
+  proto.sec = sec;
+  proto.pub = pub;
+  run_jobs((int)num, batch_write_worker, proto);
 
   return 0;
 }
 
 // call secp256k1_ec_pubkey_batch_init first or you get segfaults
 int secp256k1_ec_pubkey_batch_create(unsigned int num, unsigned char (*pub)[65], unsigned char (*sec)[32]) {
-  int i;
+  batch_job_t proto;
 
-  /* generate jacobian coordinates */
-  for (i = 0; i < num; ++i) {
-#ifdef USE_BL_ARITHMETIC
-    secp256k1_ecmult_gen_bl(&batchpj[i], sec[i]);
-#else
-    secp256k1_ecmult_gen2(&batchpj[i], sec[i]);
-#endif
-  }
+  proto.sec = sec;
+  proto.pub = pub;
+  run_jobs((int)num, batch_gen_worker, proto);
 
-  /* convert all jacobian coordinates to affine */
-  secp256k1_ge_set_all_gej_static(num, batchpa, batchpj);
+  secp256k1_ge_set_all_gej_static((int)num, batchpa, batchpj);
 
-  /* write out formatted public key */
-  for (i = 0; i < num; ++i) {
-    secp256k1_fe_normalize_var(&batchpa[i].x);
-    secp256k1_fe_normalize_var(&batchpa[i].y);
-
-    pub[i][0] = 0x04;
-    secp256k1_fe_get_b32(pub[i] +  1, &batchpa[i].x);
-    secp256k1_fe_get_b32(pub[i] + 33, &batchpa[i].y);
-  }
+  run_jobs((int)num, batch_write_worker, proto);
 
   return 0;
 }

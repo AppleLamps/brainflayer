@@ -100,27 +100,20 @@ static int (*input2priv)(unsigned char *, unsigned char *, size_t);
 
 /* bitcoin uncompressed address */
 static void uhash160(hash160_t *h, const unsigned char *upub) {
-  SHA256_CTX ctx;
   unsigned char hash[SHA256_DIGEST_LENGTH];
-
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, upub, 65);
-  SHA256_Final(hash, &ctx);
+  SHA256(upub, 65, hash);
   ripemd160_256(hash, h->uc);
 }
 
 /* bitcoin compressed address */
 static void chash160(hash160_t *h, const unsigned char *upub) {
-  SHA256_CTX ctx;
   unsigned char cpub[33];
   unsigned char hash[SHA256_DIGEST_LENGTH];
 
   /* quick and dirty public key compression */
   cpub[0] = 0x02 | (upub[64] & 0x01);
   memcpy(cpub + 1, upub + 1, 32);
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, cpub, 33);
-  SHA256_Final(hash, &ctx);
+  SHA256(cpub, 33, hash);
   ripemd160_256(hash, h->uc);
 }
 
@@ -145,12 +138,7 @@ static void xhash160(hash160_t *h, const unsigned char *upub) {
 
 
 static int pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
-  SHA256_CTX ctx;
-
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, pass, pass_sz);
-  SHA256_Final(priv, &ctx);
-
+  SHA256(pass, pass_sz, priv);
   return 0;
 }
 
@@ -362,6 +350,9 @@ void usage(unsigned char *name) {
  -n K/N                      use only the Kth of every N input lines\n\
  -B BATCH_SIZE               batch size for affine transformations\n\
                              must be a power of 2 (default/max: %d)\n\
+ -j N                        worker count (default: number of CPUs)\n\
+                             uses processes for files/-I, threads for stdin\n\
+                             (use 1 to disable parallelism)\n\
  -w WINDOW_SIZE              window size for ecmult table (default: 16)\n\
                              uses about 3 * 2^w KiB memory on startup, but\n\
                              only about 2^w KiB once the table is built\n\
@@ -392,8 +383,8 @@ int main(int argc, char **argv) {
 
   unsigned char modestr[64];
 
-  int spok = 0, aopt = 0, vopt = 0, wopt = 16, xopt = 0;
-  int nopt_mod = 0, nopt_rem = 0, Bopt = 0;
+  int spok = 0, aopt = 0, vopt = 0, wopt = 16, xopt = 0, jopt = 0;
+  int nopt_mod = 0, nopt_rem = 0, Bopt = 0, nopt_user = 0;
   uint64_t kopt = 0, Nopt = ~0ULL;
   unsigned char *bopt = NULL, *iopt = NULL, *oopt = NULL;
   unsigned char *topt = NULL, *sopt = NULL, *popt = NULL;
@@ -411,8 +402,10 @@ int main(int argc, char **argv) {
   int batch_line_read[BATCH_MAX];
   unsigned char batch_priv[BATCH_MAX][32];
   unsigned char batch_upub[BATCH_MAX][65];
+  memset(batch_line, 0, sizeof(batch_line));
+  memset(batch_line_sz, 0, sizeof(batch_line_sz));
 
-  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:N:B:")) != -1) {
+  while ((c = getopt(argc, argv, "avxb:hi:k:f:m:n:o:p:s:r:c:t:w:I:N:B:j:")) != -1) {
     switch (c) {
       case 'a':
         aopt = 1; // open output file in append mode
@@ -423,6 +416,7 @@ int main(int argc, char **argv) {
         break;
       case 'n':
         // only try the rem'th of every mod lines (one indexed)
+        nopt_user = 1;
         nopt_rem = atoi(optarg) - 1;
         optarg = strchr(optarg, '/');
         if (optarg != NULL) { nopt_mod = atoi(optarg+1); }
@@ -430,6 +424,12 @@ int main(int argc, char **argv) {
         break;
       case 'B':
         Bopt = atoi(optarg);
+        break;
+      case 'j':
+        jopt = atoi(optarg);
+        if (jopt < 1) {
+          bail(1, "Invalid '-j' argument, threads must be >= 1\n");
+        }
         break;
       case 'N':
         Nopt = strtoull(optarg, NULL, 0); // allows 0x
@@ -697,6 +697,11 @@ int main(int argc, char **argv) {
 
   if (vopt && ofile == stdout && isatty(fileno(stdout))) { tty = 1; }
 
+  if (jopt < 1) {
+    long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    jopt = (ncpu > 0) ? (int)ncpu : 1;
+  }
+
   brainflayer_init_globals();
 
   if (secp256k1_ec_pubkey_precomp_table(wopt, mopt) != 0) {
@@ -705,6 +710,76 @@ int main(int argc, char **argv) {
 
   if (secp256k1_ec_pubkey_batch_init(BATCH_MAX) != 0) {
     bail(1, "failed to initialize batch point conversion structures\n");
+  }
+
+  int worker_id = 0;
+  int nchildren = 0;
+  pid_t children[64];
+  int use_processes = (jopt > 1 && !nopt_user && (Iopt != NULL || iopt != NULL));
+
+  if (use_processes) {
+    int w;
+    if (jopt > 64) {
+      jopt = 64;
+    }
+    nopt_mod = jopt;
+    skipping = 1;
+    if (Iopt && nopt_mod < 1) {
+      nopt_mod = 1;
+    }
+    for (w = 1; w < jopt; ++w) {
+      pid_t pid = fork();
+      if (pid < 0) {
+        bail(1, "fork failed: %s\n", strerror(errno));
+      }
+      if (pid == 0) {
+        worker_id = w;
+        nopt_rem = w;
+        nchildren = 0;
+        break;
+      }
+      children[nchildren++] = pid;
+    }
+    if (worker_id == 0) {
+      nopt_rem = 0;
+    }
+    secp256k1_ec_pubkey_set_threads(1);
+    {
+      int fd = fileno(ofile);
+      int flags = fcntl(fd, F_GETFL, 0);
+      if (flags >= 0) {
+        fcntl(fd, F_SETFL, flags | O_APPEND);
+      }
+    }
+    if (iopt) {
+      if (ifile != stdin) {
+        fclose(ifile);
+      }
+      if ((ifile = fopen(iopt, "r")) == NULL) {
+        bail(1, "failed to reopen '%s' for reading: %s\n", iopt, strerror(errno));
+      }
+      posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
+    }
+    if (fopt) {
+      if (ffile != NULL) {
+        fclose(ffile);
+      }
+      if ((ffile = fopen(fopt, "r")) == NULL) {
+        bail(1, "failed to reopen '%s' for reading: %s\n", fopt, strerror(errno));
+      }
+    }
+    if (Nopt != ~0ULL) {
+      uint64_t extra = Nopt % (uint64_t)jopt;
+      Nopt = Nopt / (uint64_t)jopt + (worker_id < (int)extra ? 1 : 0);
+    }
+    if (vopt) {
+      fprintf(stderr, "[*] workers: %d processes (id %d)\n", jopt, worker_id);
+    }
+  } else {
+    jopt = secp256k1_ec_pubkey_set_threads((unsigned int)jopt);
+    if (vopt) {
+      fprintf(stderr, "[*] worker threads: %d\n", jopt);
+    }
   }
 
   ilines_curr = 0;
@@ -723,23 +798,39 @@ int main(int argc, char **argv) {
   if (!Bopt) { Bopt = BATCH_MAX; }
 
   for (;;) {
+    uint64_t remaining = (Nopt == ~0ULL) ? (uint64_t)Bopt : (Nopt - ilines_curr);
+    int this_batch = Bopt;
+    if (remaining == 0) {
+      batch_stopped = 0;
+      break;
+    }
+    if (remaining < (uint64_t)Bopt) {
+      this_batch = (int)remaining;
+    }
+
     if (Iopt) {
       if (skipping) {
         priv_add_uint32(priv, nopt_rem + kopt);
         skipping = 0;
       }
-      secp256k1_ec_pubkey_batch_incr(Bopt, nopt_mod, batch_upub, batch_priv, priv);
-      memcpy(priv, batch_priv[Bopt-1], 32);
+      secp256k1_ec_pubkey_batch_incr(this_batch, nopt_mod, batch_upub, batch_priv, priv);
+      memcpy(priv, batch_priv[this_batch-1], 32);
       priv_add_uint32(priv, nopt_mod);
 
-      batch_stopped = Bopt;
+      batch_stopped = this_batch;
     } else {
-      for (i = 0; i < Bopt;) {
+      for (i = 0; i < this_batch;) {
         if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)-1) > -1) {
           if (skipping) {
             ++raw_lines;
             if (kopt && raw_lines < kopt) { continue; }
-            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) { continue; }
+            if (nopt_mod) {
+              /* Stripe remaining lines after -k so worker 0 gets the first
+                 unskipped line. Absolute-line modulus would send -k 1 -N 1
+                 to line 5 instead of line 2 when -j 4. */
+              uint64_t idx = (uint64_t)raw_lines - kopt;
+              if (idx % (uint64_t)nopt_mod != (uint64_t)nopt_rem) { continue; }
+            }
           }
         } else {
           break;
@@ -775,46 +866,26 @@ int main(int argc, char **argv) {
     }
 
     // loop over the public keys
-    for (i = 0; i < batch_stopped; ++i) {
-      if (bloom) { /* crack mode */
-        // loop over pubkey hash functions
+    if (bloom) { /* crack mode */
+      for (i = 0; i < batch_stopped; ++i) {
         for (j = 0; pubhashfn[j].fn != NULL; ++j) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
-
-          unsigned int bit;
-          bit = BH00(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH01(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH02(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH03(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH04(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH05(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH06(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH07(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH08(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH09(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH10(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH11(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH12(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH13(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH14(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH15(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH16(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH17(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH18(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-          bit = BH19(hash160.ul); if (BLOOM_GET_BIT(bit) == 0) { continue; }
-
-          if (!fopt || hsearchf(ffile, &hash160)) {
-            if (tty) { fprintf(ofile, "\033[0K"); }
-            // reformat/populate the line if required
-            if (Iopt) {
-              hex(batch_priv[i], 32, batch_line[i], 65);
-            }
-            fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-            ++olines;
+          if (!bloom_chk_hash160(bloom, hash160.ul)) {
+            continue;
           }
+          if (fopt && !hsearchf(ffile, &hash160)) {
+            continue;
+          }
+          if (tty) { fprintf(ofile, "\033[0K"); }
+          if (Iopt) {
+            hex(batch_priv[i], 32, batch_line[i], 65);
+          }
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+          ++olines;
         }
-      } else { /* generate mode */
-        // reformat/populate the line if required
+      }
+    } else { /* generate mode */
+      for (i = 0; i < batch_stopped; ++i) {
         if (Iopt) {
           hex(batch_priv[i], 32, batch_line[i], 65);
         }
@@ -858,17 +929,28 @@ int main(int argc, char **argv) {
           ilines_rate_avg = alpha * ilines_rate + (1 - alpha) * ilines_rate_avg;
         }
 
-        fprintf(stderr,
-            "\033[0G\033[2K"
-            " rate: %9.2f p/s"
-            " found: %5zu/%-10zu"
-            " elapsed: %8.3f s"
-            "\033[0G",
-            ilines_rate_avg,
-            olines,
-            ilines_curr,
-            time_elapsed / 1.0e9
-        );
+        if (use_processes) {
+          fprintf(stderr,
+              "w%d rate: %9.2f p/s found: %5zu/%-10zu elapsed: %8.3f s\n",
+              worker_id,
+              ilines_rate_avg,
+              olines,
+              ilines_curr,
+              time_elapsed / 1.0e9
+          );
+        } else {
+          fprintf(stderr,
+              "\033[0G\033[2K"
+              " rate: %9.2f p/s"
+              " found: %5zu/%-10zu"
+              " elapsed: %8.3f s"
+              "\033[0G",
+              ilines_rate_avg,
+              olines,
+              ilines_curr,
+              time_elapsed / 1.0e9
+          );
+        }
 
         fflush(stderr);
       }
@@ -877,9 +959,19 @@ int main(int argc, char **argv) {
 
     // main loop exit condition
     if (batch_stopped < Bopt || ilines_curr >= Nopt) {
-      if (vopt) { fprintf(stderr, "\n"); }
+      if (vopt && !use_processes) { fprintf(stderr, "\n"); }
       break;
     }
+  }
+
+  if (nchildren > 0) {
+    int w, st, rc = 0;
+    for (w = 0; w < nchildren; ++w) {
+      if (waitpid(children[w], &st, 0) < 0 || !WIFEXITED(st) || WEXITSTATUS(st) != 0) {
+        rc = 1;
+      }
+    }
+    return rc;
   }
 
   return 0;
