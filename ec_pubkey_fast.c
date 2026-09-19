@@ -35,8 +35,6 @@ static int secp256k1_eckey_pubkey_parse(secp256k1_ge_t *elem, const unsigned cha
 
 #undef ASSERT
 
-#define READBIT(A, B) ((A >> (B & 7)) & 1)
-#define SETBIT(T, B, V) (T = V ? T | (1<<B) : T & ~(1<<B))
 int n_windows = 0;
 int n_values;
 secp256k1_gej_t nums_gej;
@@ -152,29 +150,27 @@ int secp256k1_ec_pubkey_precomp_table(int window_size, unsigned char *filename) 
   return 0;
 }
 
-static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
-  unsigned char a[256];
-  for (int j = 0; j < 32; j++) {
-    for (int i = 0; i < 8; i++) {
-      a[i+j*8] = READBIT(seckey[31-j], i);
-    }
+static inline unsigned int extract_window(const unsigned char *seckey,
+                                          unsigned int bit_offset,
+                                          unsigned int width) {
+  unsigned int byte_offset = bit_offset >> 3;
+  unsigned int shift = bit_offset & 7;
+  uint64_t value = 0;
+
+  for (unsigned int i = 0; i < 5 && i <= 31 - byte_offset; ++i) {
+    value |= (uint64_t)seckey[31 - byte_offset - i] << (i * 8);
   }
 
+  return (unsigned int)((value >> shift) & ((1ULL << width) - 1));
+}
+
+static void secp256k1_ecmult_gen2(secp256k1_gej_t *r, const unsigned char *seckey){
   r->infinity = 1;
-  int bits;
 
   for (int j = 0; j < n_windows; j++) {
-    if (j == n_windows -1 && remmining != 0) {
-      bits = 0;
-      for (int i = 0; i < remmining; i++) {
-        SETBIT(bits,i,a[i + j * WINDOW_SIZE]);
-      }
-    } else {
-      bits = 0;
-      for (int i = 0; i < WINDOW_SIZE; i++) {
-        SETBIT(bits,i,a[i + j * WINDOW_SIZE]);
-      }
-    }
+    unsigned int width = (j == n_windows - 1 && remmining != 0)
+      ? remmining : WINDOW_SIZE;
+    unsigned int bits = extract_window(seckey, j * WINDOW_SIZE, width);
 #if 1
     secp256k1_gej_add_ge_var(r, r, &prec[j*n_values + bits], NULL);
 #else
@@ -245,30 +241,12 @@ static void secp256k1_gej_add_ge_bl(secp256k1_gej_t *r, const secp256k1_gej_t *a
 }
 
 static void secp256k1_ecmult_gen_bl(secp256k1_gej_t *r, const unsigned char *seckey){
-  unsigned char a[256];
-  for (int j = 0; j < 32; j++){
-    for (int i = 0; i < 8; i++){
-      a[i+j*8] = READBIT(seckey[31-j], i);
-    }
-  }
-
   r->infinity = 1;
-  int bits;
 
   for (int j = 0; j < n_windows; j++) {
-    if (j == n_windows -1 && remmining != 0) {
-      bits = 0;
-      for (int i = 0; i < remmining; i++) {
-        SETBIT(bits,i,a[i + j * WINDOW_SIZE]);
-      }
-      //bits = secp256k1_scalar_get_bits2(a, j * WINDOW_SIZE, remmining);
-    } else {
-      bits = 0;
-      for (int i = 0; i < WINDOW_SIZE; i++) {
-        SETBIT(bits,i,a[i + j * WINDOW_SIZE]);
-      }
-      //bits = secp256k1_scalar_get_bits2(a, j * WINDOW_SIZE, WINDOW_SIZE);
-    }
+    unsigned int width = (j == n_windows - 1 && remmining != 0)
+      ? remmining : WINDOW_SIZE;
+    unsigned int bits = extract_window(seckey, j * WINDOW_SIZE, width);
     secp256k1_gej_add_ge_bl(r, r, &prec[j*n_values + bits], NULL);
   }
 }

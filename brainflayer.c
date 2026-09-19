@@ -734,12 +734,12 @@ int main(int argc, char **argv) {
 
       batch_stopped = Bopt;
     } else {
-      for (i = 0; i < Bopt; ++i) {
+      for (i = 0; i < Bopt;) {
         if ((batch_line_read[i] = getline(&batch_line[i], &batch_line_sz[i], ifile)-1) > -1) {
           if (skipping) {
             ++raw_lines;
-            if (kopt && raw_lines < kopt) { --i; continue; }
-            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) { --i; continue; }
+            if (kopt && raw_lines < kopt) { continue; }
+            if (nopt_mod && raw_lines % nopt_mod != nopt_rem) { continue; }
           }
         } else {
           break;
@@ -754,16 +754,21 @@ int main(int argc, char **argv) {
           unhex(batch_line[i], batch_line_read[i], unhexed, unhexed_sz);
           if (input2priv(batch_priv[i], unhexed, batch_line_read[i]/2) != 0) {
             fprintf(stderr, "input2priv failed! continuing...\n");
+            continue;
           }
         } else {
           if (input2priv(batch_priv[i], batch_line[i], batch_line_read[i]) != 0) {
             fprintf(stderr, "input2priv failed! continuing...\n");
+            continue;
           }
         }
+        ++i;
       }
 
       // batch compute the public keys
-      secp256k1_ec_pubkey_batch_create(Bopt, batch_upub, batch_priv);
+      if (i > 0) {
+        secp256k1_ec_pubkey_batch_create(i, batch_upub, batch_priv);
+      }
 
       // save ending value from read loop
       batch_stopped = i;
@@ -827,7 +832,6 @@ int main(int argc, char **argv) {
 
     // start stats
     if (vopt) {
-      ilines_curr += batch_stopped;
       if (batch_stopped < Bopt || (ilines_curr & report_mask) == 0) {
         time_curr = getns();
         time_delta = time_curr - time_last;

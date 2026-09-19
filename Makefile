@@ -6,7 +6,8 @@ OBJECTS = $(OBJ_MAIN) $(OBJ_UTIL) $(OBJ_ALGO)
 BINARIES = brainflayer hexln hex2blf blfchk ecmtabgen filehex
 LIBS = -lrt -lcrypto -lgmp
 CFLAGS = -O3 \
-         -flto -funsigned-char -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
+		 -flto -march=native -mtune=native -fomit-frame-pointer -funsigned-char \
+		 -falign-functions=16 -falign-loops=16 -falign-jumps=16 \
          -Wall -Wextra -Wno-pointer-sign -Wno-sign-compare \
          -pedantic -std=gnu99
 COMPILE = gcc $(CFLAGS)
