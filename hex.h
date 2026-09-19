@@ -2,6 +2,8 @@
 #ifndef __BRAINFLAYER_HEX_H_
 #define __BRAINFLAYER_HEX_H_
 
+#include <stddef.h>
+
 static const unsigned char unhex_tab[80] = {
   0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -25,6 +27,19 @@ unhex(unsigned char *str, size_t str_sz,
 }
 
 unsigned char * hex(unsigned char *, size_t, unsigned char *, size_t);
+
+static const char hex_tab[16] = "0123456789abcdef";
+
+/* Write 2*n hex chars plus a terminating NUL to dst. dst must hold 2*n+1. */
+static inline void hex_encode(const unsigned char *buf, size_t n, char *dst) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    unsigned char b = buf[i];
+    dst[i * 2] = hex_tab[b >> 4];
+    dst[i * 2 + 1] = hex_tab[b & 15];
+  }
+  dst[n * 2] = 0;
+}
 
 #endif /* __BRAINFLAYER_HEX_H_ */
 /*  vim: set ts=2 sw=2 et ai si: */

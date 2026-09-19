@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <inttypes.h>
+
+#include <openssl/sha.h>
 
 #include <openssl/sha.h>
 
@@ -20,6 +23,8 @@
 #include <sys/sysinfo.h>
 
 #include "ripemd160_256.h"
+#include "sha256_fast.h"
+#include "lineread.h"
 
 #include "ec_pubkey_fast.h"
 
@@ -59,7 +64,7 @@ do { \
 } while (0)
 
 #define chkmalloc(S) _chkmalloc(S, __FILE__, __LINE__)
-static void * _chkmalloc(size_t size, unsigned char *file, unsigned int line) {
+static void * _chkmalloc(size_t size, const char *file, unsigned int line) {
   void *ptr = malloc(size);
   if (ptr == NULL) {
     bail(1, "malloc(%zu) failed at %s:%u: %s\n", size, file, line, strerror(errno));
@@ -67,8 +72,9 @@ static void * _chkmalloc(size_t size, unsigned char *file, unsigned int line) {
   return ptr;
 }
 
-#define chkrealloc(P, S) _chkrealloc(P, S, __FILE__, __LINE__);
-static void * _chkrealloc(void *ptr, size_t size, unsigned char *file, unsigned int line) {
+#define chkrealloc(P, S) _chkrealloc(P, S, __FILE__, __LINE__)
+__attribute__((unused))
+static void * _chkrealloc(void *ptr, size_t size, const char *file, unsigned int line) {
   void *ptr2 = realloc(ptr, size);
   if (ptr2 == NULL) {
     bail(1, "realloc(%p, %zu) failed at %s:%u: %s\n", ptr, size, file, line, strerror(errno));
@@ -91,6 +97,7 @@ static inline void brainflayer_init_globals() {
     /* initialize buffers */
     mem = chkmalloc(4096);
     unhexed = chkmalloc(unhexed_sz);
+    sha256_fast_init();
 
     /* set the flag */
     brainflayer_is_init = 1;
@@ -103,7 +110,7 @@ static int (*input2priv)(unsigned char *, unsigned char *, size_t);
 /* bitcoin uncompressed address */
 static void uhash160(hash160_t *h, const unsigned char *upub) {
   unsigned char hash[SHA256_DIGEST_LENGTH];
-  SHA256(upub, 65, hash);
+  sha256_fast(upub, 65, hash);
   ripemd160_256(hash, h->uc);
 }
 
@@ -115,7 +122,7 @@ static void chash160(hash160_t *h, const unsigned char *upub) {
   /* quick and dirty public key compression */
   cpub[0] = 0x02 | (upub[64] & 0x01);
   memcpy(cpub + 1, upub + 1, 32);
-  SHA256(cpub, 33, hash);
+  sha256_fast(cpub, 33, hash);
   ripemd160_256(hash, h->uc);
 }
 
@@ -140,7 +147,7 @@ static void xhash160(hash160_t *h, const unsigned char *upub) {
 
 
 static int pass2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
-  SHA256(pass, pass_sz, priv);
+  sha256_fast(pass, pass_sz, priv);
   return 0;
 }
 
@@ -265,23 +272,25 @@ static int brainv2salt2priv(unsigned char *priv, unsigned char *salt, size_t sal
 
 static unsigned char rushchk[5];
 static int rush2priv(unsigned char *priv, unsigned char *pass, size_t pass_sz) {
-  SHA256_CTX ctx;
   unsigned char hash[SHA256_DIGEST_LENGTH];
   unsigned char userpasshash[SHA256_DIGEST_LENGTH*2+1];
+  unsigned char stack[512];
+  unsigned char *combined = stack;
+  size_t combined_sz = kdfsalt_sz + 64;
 
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, pass, pass_sz);
-  SHA256_Final(hash, &ctx);
+  sha256_fast(pass, pass_sz, hash);
+  hex_encode(hash, sizeof(hash), (char *)userpasshash);
 
-  hex(hash, sizeof(hash), userpasshash, sizeof(userpasshash));
+  if (combined_sz > sizeof(stack)) {
+    combined = chkmalloc(combined_sz);
+  }
+  memcpy(combined, kdfsalt, kdfsalt_sz);
+  memcpy(combined + kdfsalt_sz, userpasshash, 64);
+  sha256_fast(combined, combined_sz, priv);
+  if (combined != stack) {
+    free(combined);
+  }
 
-  SHA256_Init(&ctx);
-  // kdfsalt should be the fragment up to the !
-  SHA256_Update(&ctx, kdfsalt, kdfsalt_sz);
-  SHA256_Update(&ctx, userpasshash, 64);
-  SHA256_Final(priv, &ctx);
-
-  // early exit if the checksum doesn't match
   if (memcmp(priv, rushchk, sizeof(rushchk)) != 0) { return -1; }
 
   return 0;
@@ -407,17 +416,188 @@ static int run_priv_batch_jobs(int count, int threads, priv_batch_job_t proto) {
   return chunk;
 }
 
-inline static void fprintresult(FILE *f, hash160_t *hash,
+typedef struct hash_batch_job_s {
+  int start;
+  int end;
+  int nfn;
+  unsigned char (*upub)[65];
+  hash160_t *hashes;
+  pubhashfn_t *fns;
+} hash_batch_job_t;
+
+static void *hash_batch_worker(void *arg) {
+  hash_batch_job_t *job = arg;
+  int i, j;
+  for (i = job->start; i < job->end; ++i) {
+    for (j = 0; j < job->nfn; ++j) {
+      job->fns[j].fn(&job->hashes[i * job->nfn + j], job->upub[i]);
+    }
+  }
+  return NULL;
+}
+
+static void run_hash_batch_jobs(int count, int threads, hash_batch_job_t proto) {
+  pthread_t th[64];
+  hash_batch_job_t jobs[64];
+  int created[64];
+  int T = threads;
+  int t, chunk;
+
+  if (count <= 0 || proto.nfn <= 0) {
+    return;
+  }
+  if (T < 2 || count < 32) {
+    proto.start = 0;
+    proto.end = count;
+    hash_batch_worker(&proto);
+    return;
+  }
+  if (T > 64) {
+    T = 64;
+  }
+  if (T > count) {
+    T = count;
+  }
+  chunk = (count + T - 1) / T;
+  for (t = 0; t < T; ++t) {
+    created[t] = 0;
+    jobs[t] = proto;
+    jobs[t].start = t * chunk;
+    jobs[t].end = jobs[t].start + chunk;
+    if (jobs[t].end > count) {
+      jobs[t].end = count;
+    }
+    if (jobs[t].start >= jobs[t].end) {
+      T = t;
+      break;
+    }
+    if (t == 0) {
+      continue;
+    }
+    if (pthread_create(&th[t], NULL, hash_batch_worker, &jobs[t]) == 0) {
+      created[t] = 1;
+    } else {
+      hash_batch_worker(&jobs[t]);
+    }
+  }
+  hash_batch_worker(&jobs[0]);
+  for (t = 1; t < T; ++t) {
+    if (created[t]) {
+      pthread_join(th[t], NULL);
+    }
+  }
+}
+
+static int ensure_line_buf(char **line, size_t *sz, size_t need) {
+  char *p;
+  size_t nsz;
+  if (*sz >= need) {
+    return 0;
+  }
+  nsz = *sz ? *sz : 128;
+  while (nsz < need) {
+    nsz *= 2;
+  }
+  p = realloc(*line, nsz);
+  if (p == NULL) {
+    return -1;
+  }
+  *line = p;
+  *sz = nsz;
+  return 0;
+}
+
+static char *obuf;
+static size_t obuf_len, obuf_cap;
+static FILE *obuf_fp;
+static int out_tty = 0;
+
+static void obuf_init(FILE *fp, int is_tty) {
+  obuf_fp = fp;
+  out_tty = is_tty;
+  obuf_cap = 1u << 20;
+  obuf_len = 0;
+  obuf = chkmalloc(obuf_cap);
+}
+
+static int obuf_write_all(int fd, const char *p, size_t n) {
+  while (n) {
+    ssize_t w = write(fd, p, n);
+    if (w < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return -1;
+    }
+    p += w;
+    n -= (size_t)w;
+  }
+  return 0;
+}
+
+static void obuf_flush(void) {
+  int fd;
+  const char *p;
+  const char *end;
+  if (!obuf_len) {
+    return;
+  }
+  fd = fileno(obuf_fp);
+  p = obuf;
+  end = obuf + obuf_len;
+  while (p < end) {
+    const char *nl = memchr(p, '\n', (size_t)(end - p));
+    size_t n = nl ? (size_t)(nl - p + 1) : (size_t)(end - p);
+    if (obuf_write_all(fd, p, n) < 0) {
+      break;
+    }
+    p += n;
+  }
+  obuf_len = 0;
+}
+
+static void obuf_write(const char *p, size_t n) {
+  if (n >= obuf_cap) {
+    obuf_flush();
+    obuf_write_all(fileno(obuf_fp), p, n);
+    return;
+  }
+  if (obuf_len + n > obuf_cap) {
+    obuf_flush();
+  }
+  memcpy(obuf + obuf_len, p, n);
+  obuf_len += n;
+}
+
+static void fprintresult(FILE *f, hash160_t *hash,
                                 unsigned char compressed,
                                 unsigned char *type,
                                 unsigned char *input) {
-  unsigned char hexed0[41];
+  size_t inlen = strlen((char *)input);
+  size_t typelen = strlen((char *)type);
+  size_t need = 40 + 1 + 1 + 1 + typelen + 1 + inlen + 1;
+  char stack[512];
+  char *dst = stack;
 
-  fprintf(f, "%s:%c:%s:%s\n",
-          hex(hash->uc, 20, hexed0, sizeof(hexed0)),
-          compressed,
-          type,
-          input);
+  (void)f;
+  if (need > sizeof(stack)) {
+    dst = chkmalloc(need);
+  }
+  hex_encode(hash->uc, 20, dst);
+  dst[40] = ':';
+  dst[41] = (char)compressed;
+  dst[42] = ':';
+  memcpy(dst + 43, type, typelen);
+  dst[43 + typelen] = ':';
+  memcpy(dst + 44 + typelen, input, inlen);
+  dst[44 + typelen + inlen] = '\n';
+  if (out_tty) {
+    obuf_write("\033[0K", 4);
+  }
+  obuf_write(dst, need);
+  if (dst != stack) {
+    free(dst);
+  }
 }
 
 void usage(unsigned char *name) {
@@ -501,8 +681,9 @@ int main(int argc, char **argv) {
   unsigned char *Iopt = NULL, *copt = NULL;
 
   unsigned char priv[64];
-  hash160_t hash160;
   pubhashfn_t pubhashfn[8];
+  hash160_t *batch_hash = NULL;
+  int n_pubhashfn = 0;
   memset(pubhashfn, 0, sizeof(pubhashfn));
 
   int batch_stopped = -1;
@@ -691,6 +872,11 @@ int main(int argc, char **argv) {
     pubhashfn[i].id = copt[i];
     ++i;
   }
+  n_pubhashfn = i;
+  if (n_pubhashfn < 1) {
+    bail(1, "No hash160 types specified\n");
+  }
+  batch_hash = chkmalloc(sizeof(hash160_t) * (size_t)BATCH_MAX * (size_t)n_pubhashfn);
 
   /* handle topt */
   if (topt == NULL) { topt = "sha256"; }
@@ -789,24 +975,27 @@ int main(int argc, char **argv) {
     }
   }
 
+  lineread_t lreader;
+  memset(&lreader, 0, sizeof(lreader));
+  lreader.fd = -1;
+
   if (iopt) {
-    if ((ifile = fopen(iopt, "r")) == NULL) {
-      bail(1, "failed to open '%s' for reading: %s\n", iopt, strerror(errno));
+    int lrret = lineread_open_path(&lreader, (const char *)iopt);
+    if (lrret != 0) {
+      bail(1, "failed to open '%s' for reading: %s\n", iopt, strerror(-lrret));
     }
-    // increases readahead window, don't really care if it fails
-    posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
+  } else if (!Iopt) {
+    lineread_open_fp(&lreader, ifile);
   }
 
   if (oopt && (ofile = fopen(oopt, (aopt ? "a" : "w"))) == NULL) {
     bail(1, "failed to open '%s' for writing: %s\n", oopt, strerror(errno));
   }
 
-  /* line buffer output */
-  setvbuf(ofile,  NULL, _IOLBF, 0);
-  /* line buffer stderr */
   setvbuf(stderr, NULL, _IOLBF, 0);
 
   if (vopt && ofile == stdout && isatty(fileno(stdout))) { tty = 1; }
+  obuf_init(ofile, tty);
 
   if (jopt < 1) {
     long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
@@ -830,6 +1019,7 @@ int main(int argc, char **argv) {
 
   if (use_processes) {
     int w;
+    fflush(ofile);
     if (jopt > 64) {
       jopt = 64;
     }
@@ -861,15 +1051,6 @@ int main(int argc, char **argv) {
       if (flags >= 0) {
         fcntl(fd, F_SETFL, flags | O_APPEND);
       }
-    }
-    if (iopt) {
-      if (ifile != stdin) {
-        fclose(ifile);
-      }
-      if ((ifile = fopen(iopt, "r")) == NULL) {
-        bail(1, "failed to reopen '%s' for reading: %s\n", iopt, strerror(errno));
-      }
-      posix_fadvise(fileno(ifile), 0, 0, POSIX_FADV_SEQUENTIAL);
     }
     if (Nopt != ~0ULL) {
       uint64_t extra = Nopt % (uint64_t)jopt;
@@ -926,24 +1107,28 @@ int main(int argc, char **argv) {
       int filled = 0;
 
       for (i = 0; i < this_batch;) {
-        int linelen;
-        if ((linelen = (int)getline(&batch_line[i], &batch_line_sz[i], ifile) - 1) > -1) {
-          if (skipping) {
-            ++raw_lines;
-            if (kopt && raw_lines < kopt) { continue; }
-            if (nopt_mod) {
-              /* Stripe remaining lines after -k so worker 0 gets the first
-                 unskipped line. Absolute-line modulus would send -k 1 -N 1
-                 to line 5 instead of line 2 when -j 4. */
-              uint64_t idx = (uint64_t)raw_lines - kopt;
-              if (idx % (uint64_t)nopt_mod != (uint64_t)nopt_rem) { continue; }
-            }
-          }
-        } else {
+        const char *line;
+        size_t linelen;
+        if (!lineread_next(&lreader, &line, &linelen)) {
           break;
         }
-        batch_line_read[i] = linelen;
+        if (skipping) {
+          ++raw_lines;
+          if (kopt && raw_lines < kopt) { continue; }
+          if (nopt_mod) {
+            /* Stripe remaining lines after -k so worker 0 gets the first
+               unskipped line. Absolute-line modulus would send -k 1 -N 1
+               to line 5 instead of line 2 when -j 4. */
+            uint64_t idx = (uint64_t)raw_lines - kopt;
+            if (idx % (uint64_t)nopt_mod != (uint64_t)nopt_rem) { continue; }
+          }
+        }
+        if (ensure_line_buf(&batch_line[i], &batch_line_sz[i], linelen + 1) != 0) {
+          bail(1, "realloc failed while reading input\n");
+        }
+        memcpy(batch_line[i], line, linelen);
         batch_line[i][linelen] = 0;
+        batch_line_read[i] = (int)linelen;
         ++i;
       }
       filled = i;
@@ -1001,10 +1186,31 @@ int main(int argc, char **argv) {
       batch_stopped = filled;
     }
 
-    // loop over the public keys
+    // Hash public keys. Generate mode hashes the batch in parallel, then
+    // formats output. Crack mode hashes and bloom-checks per key so the
+    // digest stays hot in cache (almost every candidate misses).
+    if (batch_stopped > 0 && !bloom) {
+      hash_batch_job_t hjob;
+      hjob.start = 0;
+      hjob.end = batch_stopped;
+      hjob.nfn = n_pubhashfn;
+      hjob.upub = batch_upub;
+      hjob.hashes = batch_hash;
+      hjob.fns = pubhashfn;
+      if (!use_processes && jopt > 1) {
+        run_hash_batch_jobs(batch_stopped, jopt, hjob);
+      } else {
+        hash_batch_worker(&hjob);
+      }
+    }
+
     if (bloom) { /* crack mode */
+      hash160_t hash160;
       for (i = 0; i < batch_stopped; ++i) {
-        for (j = 0; pubhashfn[j].fn != NULL; ++j) {
+        if (Iopt) {
+          hex_encode(batch_priv[i], 32, batch_line[i]);
+        }
+        for (j = 0; j < n_pubhashfn; ++j) {
           pubhashfn[j].fn(&hash160, batch_upub[i]);
           if (!bloom_chk_hash160(bloom, hash160.ul)) {
             continue;
@@ -1012,26 +1218,23 @@ int main(int argc, char **argv) {
           if (fopt && !hsearchf(&fctx, &hash160)) {
             continue;
           }
-          if (tty) { fprintf(ofile, "\033[0K"); }
-          if (Iopt) {
-            hex(batch_priv[i], 32, batch_line[i], 65);
-          }
-          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
+          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
           ++olines;
         }
       }
     } else { /* generate mode */
       for (i = 0; i < batch_stopped; ++i) {
         if (Iopt) {
-          hex(batch_priv[i], 32, batch_line[i], 65);
+          hex_encode(batch_priv[i], 32, batch_line[i]);
         }
-        j = 0;
-        while (pubhashfn[j].fn != NULL) {
-          pubhashfn[j].fn(&hash160, batch_upub[i]);
-          fprintresult(ofile, &hash160, pubhashfn[j].id, modestr, batch_line[i]);
-          ++j;
+        for (j = 0; j < n_pubhashfn; ++j) {
+          fprintresult(ofile, &batch_hash[i * n_pubhashfn + j],
+                       pubhashfn[j].id, modestr, (unsigned char *)batch_line[i]);
         }
       }
+    }
+    if (use_processes) {
+      obuf_flush();
     }
     // end public key processing loop
 
@@ -1065,9 +1268,12 @@ int main(int argc, char **argv) {
           ilines_rate_avg = alpha * ilines_rate + (1 - alpha) * ilines_rate_avg;
         }
 
+        if (tty) {
+          obuf_flush();
+        }
         if (use_processes) {
           fprintf(stderr,
-              "w%d rate: %9.2f p/s found: %5zu/%-10zu elapsed: %8.3f s\n",
+              "w%d rate: %9.2f p/s found: %5" PRIu64 "/%-10" PRIu64 " elapsed: %8.3f s\n",
               worker_id,
               ilines_rate_avg,
               olines,
@@ -1078,7 +1284,7 @@ int main(int argc, char **argv) {
           fprintf(stderr,
               "\033[0G\033[2K"
               " rate: %9.2f p/s"
-              " found: %5zu/%-10zu"
+              " found: %5" PRIu64 "/%-10" PRIu64
               " elapsed: %8.3f s"
               "\033[0G",
               ilines_rate_avg,
@@ -1098,6 +1304,11 @@ int main(int argc, char **argv) {
       if (vopt && !use_processes) { fprintf(stderr, "\n"); }
       break;
     }
+  }
+
+  obuf_flush();
+  if (worker_id == 0) {
+    lineread_close(&lreader);
   }
 
   if (nchildren > 0) {

@@ -1,19 +1,21 @@
 /* Copyright (c) 2015 Ryan Castellucci, All Rights Reserved */
 #include <stdint.h>
 #include <stddef.h>
-#include <stdio.h>
 
 #include "hex.h"
 
 unsigned char *
 hex(unsigned char *buf, size_t buf_sz,
     unsigned char *hexed, size_t hexed_sz) {
-  int i, j;
-  --hexed_sz;
-  for (i = j = 0; i < buf_sz && j < hexed_sz; ++i, j += 2) {
-    snprintf(hexed+j, 3, "%02x", buf[i]);
+  size_t n;
+  if (hexed_sz == 0) {
+    return hexed;
   }
-  hexed[j] = 0; // null terminate
+  n = (hexed_sz - 1) / 2;
+  if (n > buf_sz) {
+    n = buf_sz;
+  }
+  hex_encode(buf, n, (char *)hexed);
   return hexed;
 }
 

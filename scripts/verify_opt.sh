@@ -23,6 +23,26 @@ PHRASES="${WORKDIR}/phrases.txt"
 printf 'password\ncorrect horse battery staple\nhello\nBrainflayer\n' > "${PHRASES}"
 printf 'unrelated-candidate-%s\n' {1..200} >> "${PHRASES}"
 
+echo "[*] stdin and file generate match"
+"${BF}" -j 2 -c uc -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/gen_file.txt"
+"${BF}" -j 2 -c uc -m "${TABLE}" -o "${WORKDIR}/gen_stdin.txt" < "${PHRASES}"
+sort "${WORKDIR}/gen_file.txt" -o "${WORKDIR}/gen_file.sorted"
+sort "${WORKDIR}/gen_stdin.txt" -o "${WORKDIR}/gen_stdin.sorted"
+diff -q "${WORKDIR}/gen_file.sorted" "${WORKDIR}/gen_stdin.sorted"
+
+echo "[*] last line without a trailing newline is processed"
+printf 'password\nhello' > "${WORKDIR}/no_nl.txt"
+"${BF}" -j 1 -c c -i "${WORKDIR}/no_nl.txt" -m "${TABLE}" -o "${WORKDIR}/no_nl.out"
+grep -q ':password$' "${WORKDIR}/no_nl.out"
+grep -q ':hello$' "${WORKDIR}/no_nl.out"
+
+echo "[*] -N with workers still covers the first N lines"
+"${BF}" -j 1 -c c -N 10 -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/n1.txt"
+"${BF}" -j 4 -c c -N 10 -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/n4.txt"
+sort "${WORKDIR}/n1.txt" -o "${WORKDIR}/n1.sorted"
+sort "${WORKDIR}/n4.txt" -o "${WORKDIR}/n4.sorted"
+diff -q "${WORKDIR}/n1.sorted" "${WORKDIR}/n4.sorted"
+
 echo "[*] generate-mode outputs match across worker counts"
 "${BF}" -j 1 -c uc -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/gen1.txt"
 "${BF}" -j 4 -c uc -i "${PHRASES}" -m "${TABLE}" -o "${WORKDIR}/gen4.txt"
@@ -71,6 +91,14 @@ grep -q ':password$' "${WORKDIR}/hits.txt"
 grep -q ':hello$' "${WORKDIR}/hits.txt"
 if grep -q 'unrelated-candidate' "${WORKDIR}/hits.txt"; then
   echo "false positive against empty extra candidates" >&2
+  exit 1
+fi
+
+echo "[*] blfchk accepts planted hash160s"
+"${ROOT}/blfchk" "${WORKDIR}/test.blf" < "${WORKDIR}/hashes.hex" > "${WORKDIR}/blfchk.out"
+if [[ "$(wc -l < "${WORKDIR}/blfchk.out")" -lt 4 ]]; then
+  echo "blfchk missed planted hashes" >&2
+  cat "${WORKDIR}/blfchk.out" >&2
   exit 1
 fi
 
