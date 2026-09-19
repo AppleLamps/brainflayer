@@ -168,6 +168,15 @@ make test          # correctness checks (needs ~a few seconds)
 # make bench       # throughput; writes rates to stdout
 ```
 
+To crack against the private [AppleLampsX/brain](https://huggingface.co/datasets/AppleLampsX/brain) bloom filter:
+
+```
+export HF_TOKEN=...          # read access to the dataset
+make fetch-dataset           # downloads data/keys.blf (~512 MiB)
+make test-dataset            # load + negative-control + throughput
+brainflayer -v -b data/keys.blf -m /tmp/ecmult.w16.tab -i phrases.txt
+```
+
 `make` uses `-std=gnu11`, LTO, and `-march=native` so the binary can use SHA-NI
 and AVX2 on the build machine. Override with `ARCH=x86-64-v3` for a more
 portable binary. `make USE_BL=1` enables alternate EC addition code—benchmark

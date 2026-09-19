@@ -27,7 +27,7 @@ ifneq ($(filter native x86-64 x86-64-v2 x86-64-v3 x86-64-v4,$(ARCH)),)
 SECP_CONFIG += --with-asm=x86_64
 endif
 
-.PHONY: all clean test bench
+.PHONY: all clean test bench fetch-dataset test-dataset
 
 all: $(BINARIES)
 
@@ -95,6 +95,12 @@ test: all tests/test_sha256 $(TABLE)
 
 bench: all $(TABLE)
 	TABLE="$(TABLE)" ./scripts/benchmark.sh
+
+fetch-dataset:
+	./scripts/fetch_hf_brain.sh
+
+test-dataset: all $(TABLE)
+	TABLE="$(TABLE)" ./scripts/test_hf_brain.sh
 
 clean:
 	rm -f $(BINARIES) $(OBJECTS) $(OBJECTS:.o=.d) tests/test_sha256 tests/test_sha256.d

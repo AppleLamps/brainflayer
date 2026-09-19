@@ -43,3 +43,7 @@ tests/test_sha256
 # misc
 old
 notes
+
+# Hugging Face bloom filter (AppleLampsX/brain)
+data/*.blf
+data/*.blf.gz
