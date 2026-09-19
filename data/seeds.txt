@@ -1,0 +1,1000 @@
+# High-value brainwallet seeds (public-domain quotes, bitcoin culture, common phrases).
+# Lines starting with # are ignored. Generator also emits separator and case variants.
+
+# --- bitcoin / crypto culture ---
+satoshi
+satoshi nakamoto
+bitcoin
+bitcoin satoshi
+satoshi bitcoin
+btc
+genesis
+genesis block
+the times 03/jan/2009 chancellor on brink of second bailout for banks
+The Times 03/Jan/2009 Chancellor on brink of second bailout for banks
+peer to peer electronic cash
+peer-to-peer electronic cash
+electronic cash
+digital gold
+digital currency
+cryptocurrency
+crypto currency
+to the moon
+hodl
+buy bitcoin
+sell bitcoin
+i am satoshi
+we are all satoshi
+i am bitcoin
+dorian nakamoto
+hal finney
+nick szabo
+wei dai
+bit gold
+b-money
+wikileaks
+silk road
+mtgox
+mt gox
+mt.gox
+coinbase
+blockchain
+block chain
+public key
+private key
+privatekey
+secret key
+secretkey
+brainwallet
+brain wallet
+my brain wallet
+my bitcoin
+my btc
+correct horse battery staple
+xkcd
+xkcd password
+correct horse
+battery staple
+trustless
+decentralized
+censorship resistant
+not your keys not your coins
+not your keys not your bitcoin
+be your own bank
+magic internet money
+1 bitcoin
+21000000
+21 million
+21 million bitcoins
+bitcoin pizza
+bitcoin pizza day
+two pizzas
+10000 bitcoins
+honey badger
+honey badger dont care
+such wow
+much bitcoin
+very money
+doge
+dogecoin
+litecoin
+namecoin
+peercoin
+primecoin
+feathercoin
+defcoin
+all your bitcoin are belong to us
+all your base are belong to us
+all your base
+welcome to the future
+in cryptography we trust
+in bitcoin we trust
+in satoshi we trust
+trust no one
+trust nobody
+dont trust verify
+don't trust verify
+the bitcoin is going to the moon
+bitcoin is digital gold
+bitcoin is money
+money is bitcoin
+one bitcoin
+ten bitcoin
+one hundred bitcoin
+my coins
+my coins are my coins
+this is my wallet
+this is my bitcoin
+password bitcoin
+bitcoin password
+wallet password
+my wallet
+my wallet password
+passphrase
+my passphrase
+secret passphrase
+hidden bitcoin
+hidden wallet
+hidden treasure
+x marks the spot
+open sesame
+abracadabra
+alakazam
+hocus pocus
+supercalifragilisticexpialidocious
+always
+follow the white rabbit
+the cake is a lie
+winter is coming
+valar morghulis
+one ring to rule them all
+my precious
+you shall not pass
+i am groot
+live long and prosper
+beam me up scotty
+resistance is futile
+may the force be with you
+i am your father
+these are not the droids you are looking for
+a long time ago in a galaxy far far away
+use the force
+do or do not there is no try
+never tell me the odds
+i'll be back
+hasta la vista baby
+come with me if you want to live
+houston we have a problem
+that's one small step for man
+one small step for man one giant leap for mankind
+the truth is out there
+i want to believe
+elementary my dear watson
+the game is afoot
+to infinity and beyond
+just keep swimming
+hakuna matata
+why so serious
+let's put a smile on that face
+i know kung fu
+there is no spoon
+red pill
+blue pill
+take the red pill
+free your mind
+whoa
+mr anderson
+the matrix
+the matrix has you
+wake up neo
+knock knock neo
+follow the money
+show me the money
+greed is good
+life finds a way
+welcome to jurassic park
+et tu brute
+veni vidi vici
+carpe diem
+e pluribus unum
+in god we trust
+life liberty and the pursuit of happiness
+we the people
+we the people of the united states
+four score and seven years ago
+i have a dream
+ask not what your country can do for you
+the only thing we have to fear is fear itself
+give me liberty or give me death
+i regret that i have but one life to lose for my country
+that's one small step
+a giant leap for mankind
+hidden figures
+knowledge is power
+time is money
+money is power
+power is money
+money never sleeps
+the world is not enough
+from russia with love
+live and let die
+you only live twice
+goldfinger
+diamonds are forever
+for your eyes only
+the spy who loved me
+on her majesty's secret service
+dr no
+thunderball
+moonraker
+goldeneye
+tomorrow never dies
+the man with the golden gun
+licence to kill
+casino royale
+quantum of solace
+skyfall
+spectre
+nobody does it better
+shaken not stirred
+bond james bond
+the name is bond james bond
+my name is bond
+i spy
+secret agent
+double oh seven
+007
+mission impossible
+this message will self destruct
+the eagle has landed
+one small step
+the eagle has landed houston
+houston
+tranquility base here the eagle has landed
+that's no moon
+rickroll
+hello world
+hello hello
+hello there
+general kenobi
+i have the high ground
+it's over anakin
+this is the way
+may the odds be ever in your favor
+i volunteer as tribute
+winter is coming
+the north remembers
+fire and blood
+ours is the fury
+hear me roar
+we do not sow
+growing strong
+unbowed unbent unbroken
+ours is the fury
+a song of ice and fire
+game of thrones
+lord of the rings
+the hobbit
+there and back again
+you shall not pass
+speak friend and enter
+mellon
+not all those who wander are lost
+all we have to decide is what to do with the time that is given us
+even the smallest person can change the course of the future
+my precioussss
+gollum
+smeagol
+hobbitses
+second breakfast
+po-ta-toes
+what's in the box
+i see dead people
+here's johnny
+say hello to my little friend
+yippee ki yay
+i'm the king of the world
+after all tomorrow is another day
+frankly my dear i don't give a damn
+we'll always have paris
+of all the gin joints
+round up the usual suspects
+here's looking at you kid
+may the schwartz be with you
+by the power of greyskull
+i have the power
+it's clobberin time
+hulk smash
+excelsior
+great power great responsibility
+with great power comes great responsibility
+i am iron man
+avengers assemble
+wakanda forever
+on your left
+i can do this all day
+i am inevitable
+i am steve rogers
+excelsior
+to me my x-men
+live by the sword
+die by the sword
+the pen is mightier than the sword
+an eye for an eye
+turn the other cheek
+love thy neighbor
+love thy neighbour
+do unto others
+do unto others as you would have them do unto you
+the golden rule
+treat others as you want to be treated
+what goes around comes around
+easy come easy go
+all good things must come to an end
+better late than never
+better safe than sorry
+a penny saved is a penny earned
+a stitch in time saves nine
+actions speak louder than words
+all that glitters is not gold
+all that glisters is not gold
+an apple a day keeps the doctor away
+beggars can't be choosers
+birds of a feather flock together
+blood is thicker than water
+curiosity killed the cat
+don't bite the hand that feeds you
+don't count your chickens before they hatch
+don't cry over spilled milk
+don't put all your eggs in one basket
+early to bed early to rise
+fortune favors the bold
+haste makes waste
+honesty is the best policy
+if it ain't broke don't fix it
+ignorance is bliss
+it takes two to tango
+keep your friends close and your enemies closer
+look before you leap
+necessity is the mother of invention
+no pain no gain
+once bitten twice shy
+out of sight out of mind
+practice makes perfect
+rome wasn't built in a day
+slow and steady wins the race
+the early bird catches the worm
+the grass is always greener
+there is no place like home
+there's no place like home
+time heals all wounds
+two wrongs don't make a right
+when in rome
+when in rome do as the romans do
+where there's a will there's a way
+you can't have your cake and eat it too
+you can't judge a book by its cover
+a watched pot never boils
+absence makes the heart grow fonder
+beauty is in the eye of the beholder
+every cloud has a silver lining
+kill two birds with one stone
+let sleeping dogs lie
+make hay while the sun shines
+strike while the iron is hot
+the best things in life are free
+the bigger they are the harder they fall
+the customer is always right
+the devil is in the details
+the exception proves the rule
+the more things change the more they stay the same
+too many cooks spoil the broth
+what doesn't kill you makes you stronger
+when the going gets tough the tough get going
+you reap what you sow
+a rolling stone gathers no moss
+don't look a gift horse in the mouth
+every dog has its day
+fortune favours the brave
+good things come to those who wait
+if you can't beat them join them
+it's not over until the fat lady sings
+jack of all trades master of none
+mind over matter
+nothing ventured nothing gained
+once in a blue moon
+speak of the devil
+the apple doesn't fall far from the tree
+the best defense is a good offense
+the ends justify the means
+the night is darkest just before the dawn
+there's no such thing as a free lunch
+time flies when you're having fun
+two heads are better than one
+when pigs fly
+you can lead a horse to water but you can't make it drink
+
+# --- KJV / public-domain scripture (short well-known lines) ---
+in the beginning
+in the beginning god created the heaven and the earth
+in the beginning was the word
+let there be light
+and there was light
+the lord is my shepherd
+the lord is my shepherd i shall not want
+i shall not want
+yea though i walk through the valley of the shadow of death
+i will fear no evil
+thou shalt not steal
+thou shalt not kill
+thou shalt not bear false witness
+thou shalt have no other gods before me
+love thy neighbour as thyself
+for god so loved the world
+for god so loved the world that he gave his only begotten son
+the truth shall set you free
+and ye shall know the truth and the truth shall make you free
+i am the way the truth and the life
+i am the resurrection and the life
+ask and it shall be given
+seek and ye shall find
+knock and it shall be opened
+our father which art in heaven
+our father who art in heaven
+hallowed be thy name
+thy kingdom come
+thy will be done
+give us this day our daily bread
+and forgive us our trespasses
+as we forgive those who trespass against us
+lead us not into temptation
+but deliver us from evil
+for thine is the kingdom and the power and the glory
+forever and ever amen
+amen
+hallelujah
+halleluiah
+praise the lord
+jesus
+jesus christ
+jesus of nazareth
+christ
+god
+yahweh
+jehovah
+almighty god
+holy ghost
+holy spirit
+the bible
+king james
+king james bible
+psalm 23
+psalm twenty three
+genesis 1:1
+john 3:16
+john 3 16
+matthew 6:9
+the ten commandments
+blessed are the meek
+blessed are the poor in spirit
+blessed are the peacemakers
+blessed are the merciful
+revelations
+armageddon
+alpha and omega
+i am the alpha and the omega
+the beginning and the end
+noahs ark
+noah's ark
+the promised land
+let my people go
+thou art with me
+my cup runneth over
+surely goodness and mercy shall follow me
+all the days of my life
+and i will dwell in the house of the lord for ever
+
+# --- shakespeare (public domain) ---
+to be or not to be
+to be or not to be that is the question
+whether tis nobler in the mind to suffer
+the slings and arrows of outrageous fortune
+romeo romeo wherefore art thou romeo
+what light through yonder window breaks
+but soft what light through yonder window breaks
+a rose by any other name
+a rose by any other name would smell as sweet
+all the world's a stage
+all the worlds a stage
+and all the men and women merely players
+now is the winter of our discontent
+friends romans countrymen lend me your ears
+i come to bury caesar not to praise him
+the evil that men do lives after them
+double double toil and trouble
+fire burn and cauldron bubble
+something wicked this way comes
+once more unto the breach
+once more unto the breach dear friends
+to sleep perchance to dream
+parting is such sweet sorrow
+a horse a horse my kingdom for a horse
+my kingdom for a horse
+the quality of mercy is not strained
+if music be the food of love play on
+we few we happy few we band of brothers
+this above all to thine own self be true
+to thine own self be true
+brevity is the soul of wit
+there are more things in heaven and earth
+the course of true love never did run smooth
+cowards die many times before their deaths
+how sharper than a serpent's tooth
+lord what fools these mortals be
+the play's the thing
+is this a dagger which i see before me
+out damned spot
+out damned spot out i say
+tomorrow and tomorrow and tomorrow
+life's but a walking shadow
+a tale told by an idiot
+full of sound and fury signifying nothing
+now cracks a noble heart
+good night sweet prince
+flights of angels sing thee to thy rest
+what a piece of work is man
+neither a borrower nor a lender be
+the better part of valour is discretion
+this is the winter of our discontent
+shall i compare thee to a summer's day
+thou art more lovely and more temperate
+rough winds do shake the darling buds of may
+so long as men can breathe or eyes can see
+let me not to the marriage of true minds
+love looks not with the eyes but with the mind
+some are born great some achieve greatness
+some have greatness thrust upon them
+though this be madness yet there is method in it
+there is nothing either good or bad but thinking makes it so
+o for a muse of fire
+we are such stuff as dreams are made on
+our little life is rounded with a sleep
+misery acquaints a man with strange bedfellows
+the lady doth protest too much
+methinks the lady doth protest too much
+get thee to a nunnery
+frailty thy name is woman
+something is rotten in the state of denmark
+to die to sleep no more
+ay there's the rub
+the rest is silence
+et tu brute
+beware the ides of march
+cry havoc and let slip the dogs of war
+the fault dear brutus is not in our stars
+but in ourselves
+friends romans countrymen
+a dish fit for the gods
+if you have tears prepare to shed them now
+this was the most unkindest cut of all
+ambition should be made of sterner stuff
+there is a tide in the affairs of men
+which taken at the flood leads on to fortune
+cowards die many times before their deaths
+the valiant never taste of death but once
+yond cassius has a lean and hungry look
+he thinks too much such men are dangerous
+let slip the dogs of war
+i am constant as the northern star
+this was a man
+unto the breach
+once more
+band of brothers
+we happy few
+st. crispin's day
+this day is called the feast of crispian
+he that outlives this day and comes safe home
+old men forget
+we few
+god for harry england and saint george
+uneasy lies the head that wears a crown
+a little more than kin and less than kind
+neither a borrower nor a lender be
+this above all
+to thine own self
+neither a borrower
+the slings and arrows
+outrageous fortune
+that is the question
+
+# --- public-domain literature ---
+call me ishmael
+it is a truth universally acknowledged
+it was the best of times it was the worst of times
+all happy families are alike
+happy families are all alike
+every unhappy family is unhappy in its own way
+all animals are equal
+war is peace
+freedom is slavery
+ignorance is strength
+big brother
+1984
+nineteen eighty four
+the answer is 42
+don't panic
+dont panic
+42
+forty two
+i am no bird
+reader i married him
+the reports of my death are greatly exaggerated
+now i am become death the destroyer of worlds
+i think therefore i am
+cogito ergo sum
+the only thing i know is that i know nothing
+man is born free
+man is born free and everywhere he is in chains
+god is dead
+god is dead and we have killed him
+hell is other people
+i rebel therefore i am
+one must imagine sisyphus happy
+that which does not kill us makes us stronger
+he who has a why to live can bear almost any how
+when you stare into the abyss the abyss stares back
+become who you are
+the unexamined life is not worth living
+know thyself
+nothing in excess
+i came i saw i conquered
+the die is cast
+alea iacta est
+veni vidi vici
+sic semper tyrannis
+sic transit gloria mundi
+ars longa vita brevis
+tempus fugit
+memento mori
+carpe diem quam minimum credula postero
+fortuna audaces iuvat
+ad astra per aspera
+per aspera ad astra
+semper fidelis
+semper paratus
+de oppresso liber
+this we'll defend
+these colors don't run
+don't tread on me
+dont tread on me
+join or die
+liberty or death
+no taxation without representation
+give me liberty
+e pluribus unum
+novus ordo seclorum
+annuit coeptis
+in god we trust
+we the people of the united states in order to form a more perfect union
+four score and seven years ago our fathers brought forth
+government of the people by the people for the people
+that government of the people by the people for the people shall not perish from the earth
+ask not what your country can do for you ask what you can do for your country
+ich bin ein berliner
+mr gorbachev tear down this wall
+the only thing we have to fear
+fear itself
+a date which will live in infamy
+yesterday december 7 1941
+one small step for man
+that's one small step for a man one giant leap for mankind
+the eagle has landed
+houston tranquility base here
+we choose to go to the moon
+not because it is easy but because it is hard
+that's one small step for man one giant leap for mankind
+i have a dream that one day
+free at last free at last
+thank god almighty i am free at last
+the arc of the moral universe is long but it bends toward justice
+
+# --- common passphrases / keyboard / numeric ---
+password
+password1
+password123
+passw0rd
+p@ssw0rd
+p@ssword
+letmein
+let me in
+iloveyou
+i love you
+i love you so much
+i love bitcoin
+i love money
+trustno1
+trust no 1
+welcome
+welcome1
+welcome123
+qwerty
+qwertyuiop
+asdfghjkl
+zxcvbnm
+1qaz2wsx
+1q2w3e4r
+1q2w3e4r5t
+qazwsx
+qazwsxedc
+azerty
+abc123
+abcd1234
+abc123456
+1234qwer
+qwer1234
+12345
+123456
+1234567
+12345678
+123456789
+1234567890
+123123
+111111
+000000
+654321
+666666
+777777
+888888
+999999
+121212
+112233
+131313
+101010
+555555
+222222
+333333
+444444
+696969
+420420
+13371337
+pass
+pass123
+admin
+admin123
+root
+toor
+changeme
+letmein1
+master
+master1
+master123
+dragon
+dragon1
+monkey
+monkey1
+shadow
+shadow1
+sunshine
+princess
+football
+baseball
+soccer
+hockey
+mustang
+michael
+jennifer
+jordan
+superman
+batman
+spiderman
+starwars
+star wars
+startrek
+star trek
+hello
+hello1
+hello123
+login
+login1
+passwort
+contrasena
+motdepasse
+secret
+secret1
+secret123
+secrets
+mysecret
+my secret
+hidden
+hidden1
+nothing
+none
+blank
+empty
+default
+guest
+test
+test1
+test123
+testing
+testing123
+love
+love1
+love123
+god
+god123
+jesus
+jesus1
+jesus123
+freedom
+freedom1
+whatever
+whatever1
+ncc1701
+ncc-1701
+enterprise
+voyager
+defiant
+serenity
+firefly
+browncoat
+shiny
+i aim to misbehave
+take me out to the ball game
+take me home
+home sweet home
+there's no place like home
+over the rainbow
+follow the yellow brick road
+the wonderful wizard of oz
+just a flesh wound
+ni
+nobody expects the spanish inquisition
+camelot
+don't panic
+42
+hey jude
+let it be
+imagine
+we will rock you
+we are the champions
+stairway to heaven
+hotel california
+smoke on the water
+born to be wild
+highway to hell
+back in black
+wonderwall
+bohemian rhapsody
+sweet home alabama
+blowing in the wind
+like a rolling stone
+purple haze
+happy birthday
+happy birthday to you
+for he's a jolly good fellow
+auld lang syne
+should auld acquaintance be forgot
+jingle bells
+jingle bells jingle bells
+we wish you a merry christmas
+silent night
+holy night
+o come all ye faithful
+deck the halls
+fa la la la la
+the star spangled banner
+o say can you see
+oh say can you see
+by the dawn's early light
+god save the queen
+god save the king
+o canada
+advance australia fair
+la marseillaise
+hey jude
+let it be
+imagine
+come together
+yesterday
+yellow submarine
+penny lane
+revolution
+
+# --- short maxims ---
+keep it secret
+keep it safe
+keep it simple
+keep it stupid simple
+kiss
+keep it simple stupid
+less is more
+more is more
+just do it
+impossible is nothing
+think different
+don't be evil
+move fast and break things
+stay hungry stay foolish
+the best is yet to come
+the future is now
+the future is bitcoin
+in code we trust
+code is law
+code is poetry
+free as in speech
+free as in beer
+information wants to be free
+cypherpunks write code
+cypherpunk
+crypto anarchy
+the crypto anarchist manifesto
+a specter is haunting the modern world
+the specter of crypto anarchy
+privacy is necessary
+privacy is necessary for an open society
+we must defend our own privacy
+we cannot expect governments
+your keys your coins
+not your keys
+stack sats
+stacking sats
+utxo
+unspent
+change address
+seed phrase
+mnemonic
+mnemonic phrase
+twelve words
+twenty four words
+abandon abandon abandon
+zoo zoo zoo
+test test test
+all your coins
+moon
+lambo
+when lambo
+when moon
+wen moon
+wen lambo
+number go up
+ngu
+laser eyes
+laser eyes till 100k
+hyperbitcoinization
+few
+have fun staying poor
+hfsp
+probably nothing
+wagmi
+ngmi
+gm
+gn
+ser
+anon
+degen
+ape in
+buy the dip
+sell the news
+diamond hands
+paper hands
+this is the way
+i like the coin
+i like bitcoin
+i like turtles
+do you like turtles
+do you know the muffin man
+the muffin man
+the itsy bitsy spider
+twinkle twinkle little star
+mary had a little lamb
+humpty dumpty
+humpty dumpty sat on a wall
+jack and jill
+jack and jill went up the hill
+old macdonald
+old macdonald had a farm
+eieio
+row row row your boat
+gently down the stream
+merrily merrily merrily merrily
+life is but a dream
+patty cake
+itsy bitsy
+baa baa black sheep
+have you any wool
+yes sir yes sir three bags full
+three blind mice
+see how they run
+london bridge is falling down
+my fair lady
+ring around the rosy
+ashes ashes we all fall down
+pop goes the weasel
+jack be nimble
+jack be quick
+little miss muffet
+humpty dumpty had a great fall
+all the kings horses
+and all the kings men
+couldn't put humpty together again

@@ -27,7 +27,7 @@ ifneq ($(filter native x86-64 x86-64-v2 x86-64-v3 x86-64-v4,$(ARCH)),)
 SECP_CONFIG += --with-asm=x86_64
 endif
 
-.PHONY: all clean test bench fetch-dataset test-dataset
+.PHONY: all clean test bench fetch-dataset test-dataset wordlist crack-wordlist
 
 all: $(BINARIES)
 
@@ -91,6 +91,7 @@ $(TABLE): ecmtabgen
 
 test: all tests/test_sha256 $(TABLE)
 	./tests/test_sha256
+	python3 scripts/make_wordlist.py --self-test
 	TABLE="$(TABLE)" ./scripts/verify_opt.sh
 
 bench: all $(TABLE)
@@ -101,6 +102,15 @@ fetch-dataset:
 
 test-dataset: all $(TABLE)
 	TABLE="$(TABLE)" ./scripts/test_hf_brain.sh
+
+data/wordlist.txt: data/seeds.txt scripts/make_wordlist.py
+	python3 scripts/make_wordlist.py -o data/wordlist.txt
+
+wordlist: data/wordlist.txt
+
+crack-wordlist: all $(TABLE) data/wordlist.txt
+	@test -f data/keys.blf || { echo "missing data/keys.blf; run make fetch-dataset" >&2; exit 1; }
+	./brainflayer -v -b data/keys.blf -m "$(TABLE)" -i data/wordlist.txt -o data/wordlist.hits
 
 clean:
 	rm -f $(BINARIES) $(OBJECTS) $(OBJECTS:.o=.d) tests/test_sha256 tests/test_sha256.d

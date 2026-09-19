@@ -47,3 +47,11 @@ notes
 # Hugging Face bloom filter (AppleLampsX/brain)
 data/*.blf
 data/*.blf.gz
+
+# Generated wordlist (rebuild with: make wordlist)
+data/wordlist.txt
+data/wordlist.hits
+data/wordlist-src/
+
+__pycache__/
+*.pyc
