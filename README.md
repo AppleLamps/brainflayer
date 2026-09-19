@@ -76,7 +76,7 @@ File and incremental (`-I`) runs fork worker processes that share the mmap'd
 bloom filter, ecmult table, and input file. File workers split the input mmap
 into disjoint byte ranges (so a 27 GiB wordlist is not scanned four times).
 Piped stdin uses threads and a buffered reader instead. Verbose file-worker
-rates are **per worker**; four workers at ~300k p/s is ~1.2M p/s aggregate.
+rates are **per worker** (four busy cores are roughly 4× that number).
 Extra workers beyond the CPU count do not help; use `-j 1` to force a single
 worker. The older `-n K/N` option still works if you want to split work across
 machines.
