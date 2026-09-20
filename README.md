@@ -73,10 +73,14 @@ their output to it.
 
 Brainflayer keeps every CPU busy with `-j` (default: one worker per CPU).
 File and incremental (`-I`) runs fork worker processes that share the mmap'd
-bloom filter, ecmult table, and input file. Piped stdin uses threads and a
-buffered reader instead. Extra workers beyond the CPU count do not help; use
-`-j 1` to force a single worker. The older `-n K/N` option still works if you
-want to split work across machines.
+bloom filter, ecmult table, and input file. File workers split the input mmap
+into disjoint byte ranges when the file fits in RAM. Huge wordlists stay
+line-striped so workers share cached pages. Piped stdin uses threads and a
+buffered reader instead. Verbose file-worker rates are **per worker**
+(four busy cores are roughly 4× that number).
+Extra workers beyond the CPU count do not help; use `-j 1` to force a single
+worker. The older `-n K/N` option still works if you want to split work across
+machines.
 
 The `-f` sorted hash160 file is mmap'd for verification (no per-lookup disk
 seek). Run `scripts/benchmark.sh` before/after tuning; `make USE_BL=1` enables
@@ -167,6 +171,44 @@ make -j"$(nproc)"
 make test          # correctness checks (needs ~a few seconds)
 # make bench       # throughput; writes rates to stdout
 ```
+
+To crack against the private funded-key datasets:
+
+```
+export HF_TOKEN=...          # read access to AppleLampsX/brain, h160, and eth
+make fetch-dataset           # keys.blf bloom + h160.bin + eth.blf/eth.bin
+make test-dataset            # load + negative-control + -f false-positive check
+brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab -i phrases.txt
+brainflayer -v -c e -b data/eth.blf -f data/eth.bin -m /tmp/ecmult.w16.tab -i phrases.txt
+```
+
+`keys.blf` is a 512 MiB bloom (~90M hash160s). `h160.bin` is the exact sorted
+list (90,379,448 records) from [AppleLampsX/h160](https://huggingface.co/datasets/AppleLampsX/h160).
+Always pass `-f` or bloom hits can be false positives.
+
+[AppleLampsX/eth](https://huggingface.co/datasets/AppleLampsX/eth) is the
+Ethereum counterpart (`ethereum.hex.gz` → `eth.blf` + sorted `eth.bin`,
+**62,162,885** unique addresses). Use `-c e` so candidates are hashed as
+Ethereum addresses (keccak of the uncompressed pubkey).
+`make crack-wordlist-eth` runs the generated wordlist against it.
+
+Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
+words, curated public-domain phrases, light mutations, then ranked two-word
+combinations). Default size is **over 1 billion** candidates (~20 GiB on
+disk). This is meant for `brainflayer -i`; do **not** run `case_variants.py`
+on it — full case explosion of this list is unusable.
+
+```
+make wordlist                 # writes data/wordlist.txt (>1 billion phrases, ~20 GiB)
+# make wordlist-core          # quality prefix only (~3 million)
+python3 scripts/make_wordlist.py -o - | brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab
+# or: make crack-wordlist     # file-backed with -f; writes data/wordlist.hits
+# or: make crack-wordlist-eth # Ethereum -c e against eth.blf/eth.bin
+```
+
+`make wordlist` downloads public lists into `data/wordlist-src/` (gitignored)
+and mixes `data/seeds.txt`. The billion-scale tail is streamed (no 1B-entry
+RAM set). Rebuilds are incremental on those files only.
 
 `make` uses `-std=gnu11`, LTO, and `-march=native` so the binary can use SHA-NI
 and AVX2 on the build machine. Override with `ARCH=x86-64-v3` for a more
