@@ -41,10 +41,11 @@ export HF_TOKEN=...   # read access to AppleLampsX/eth
 ./scripts/fetch_hf_eth.sh
 ```
 
-That writes `eth.blf` and `eth.bin`. The upstream file is unsorted 40-hex
-addresses with no `0x` prefix (~62 million lines, including contracts such as
-WETH). The fetch script sorts unique records before building `eth.bin`. Use
-`-c e` (Ethereum address from the uncompressed pubkey):
+That writes `eth.blf` and `eth.bin` (**62,162,885** unique 20-byte addresses,
+~1.2 GiB). The upstream file is unsorted 40-hex addresses with no `0x` prefix
+(including contracts such as WETH). The fetch script sorts unique records
+before building `eth.bin`. Use `-c e` (Ethereum address from the uncompressed
+pubkey):
 
 ```
 brainflayer -v -c e -b eth.blf -f eth.bin -m /tmp/ecmult.w16.tab -i wordlist.txt

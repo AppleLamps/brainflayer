@@ -48,8 +48,8 @@ if [[ ! -s "${WORKDIR}/weth.bloom" ]]; then
   exit 1
 fi
 if python3 "${ROOT}/scripts/h160_lookup.py" "${BIN}" \
-    ffffffffffffffffffffffffffffffffffffffff; then
-  echo "unexpected: all-0xff address is in ${BIN}" >&2
+    abcdefabcdefabcdefabcdefabcdefabcdefabcd; then
+  echo "unexpected: synthetic probe address is in ${BIN}" >&2
   exit 1
 fi
 

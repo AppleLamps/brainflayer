@@ -8,6 +8,7 @@ DATASET="${DATASET:-AppleLampsX/eth}"
 REVISION="${REVISION:-main}"
 REMOTE_NAME="ethereum.hex.gz"
 EXPECTED_GZ_SHA256="${EXPECTED_GZ_SHA256:-34306bb03329d0215f5bbeb2169fbf1fca1e846e0d3c43cf08d0c6063afbd6ea}"
+EXPECTED_COUNT="${EXPECTED_COUNT:-62162885}"
 HEX2BLF="${HEX2BLF:-${ROOT}/hex2blf}"
 BLOOM_SIZE=$((512 * 1024 * 1024))
 
@@ -97,6 +98,10 @@ sz="$(stat -c%s "${BIN}")"
 count=$((sz / 20))
 if [[ $((sz % 20)) -ne 0 ]]; then
   echo "unexpected ${BIN} size ${sz} (not a multiple of 20)" >&2
+  exit 1
+fi
+if [[ "${count}" -ne "${EXPECTED_COUNT}" ]]; then
+  echo "unexpected ${BIN} count ${count} (expected ${EXPECTED_COUNT})" >&2
   exit 1
 fi
 if [[ "$(stat -c%s "${BLF}")" -ne "${BLOOM_SIZE}" ]]; then

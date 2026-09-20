@@ -187,10 +187,10 @@ list (90,379,448 records) from [AppleLampsX/h160](https://huggingface.co/dataset
 Always pass `-f` or bloom hits can be false positives.
 
 [AppleLampsX/eth](https://huggingface.co/datasets/AppleLampsX/eth) is the
-Ethereum counterpart (`ethereum.hex.gz` → `eth.blf` + sorted `eth.bin`).
-Use `-c e` so candidates are hashed as Ethereum addresses (keccak of the
-uncompressed pubkey). `make crack-wordlist-eth` runs the generated wordlist
-against it.
+Ethereum counterpart (`ethereum.hex.gz` → `eth.blf` + sorted `eth.bin`,
+**62,162,885** unique addresses). Use `-c e` so candidates are hashed as
+Ethereum addresses (keccak of the uncompressed pubkey).
+`make crack-wordlist-eth` runs the generated wordlist against it.
 
 Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
 words, curated public-domain phrases, light mutations, then ranked two-word
