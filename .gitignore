@@ -44,16 +44,22 @@ tests/test_sha256
 old
 notes
 
-# Hugging Face bloom filter (AppleLampsX/brain) and exact hash160s (AppleLampsX/h160)
+# Hugging Face bloom/hash lists (AppleLampsX/brain, h160, eth)
 data/*.blf
 data/*.blf.gz
 data/all.hex.gz
+data/ethereum.hex.gz
+data/ethereum.hex
+data/ethereum.sorted.hex
 data/h160.bin
 data/h160.bin.tmp
+data/eth.bin
+data/eth.bin.tmp
 
 # Generated wordlist (rebuild with: make wordlist)
 data/wordlist.txt
 data/wordlist.hits
+data/wordlist.eth.hits
 data/wordlist-src/
 
 __pycache__/

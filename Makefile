@@ -27,7 +27,7 @@ ifneq ($(filter native x86-64 x86-64-v2 x86-64-v3 x86-64-v4,$(ARCH)),)
 SECP_CONFIG += --with-asm=x86_64
 endif
 
-.PHONY: all clean test bench fetch-dataset fetch-bloom fetch-h160 test-dataset wordlist wordlist-core crack-wordlist
+.PHONY: all clean test bench fetch-dataset fetch-bloom fetch-h160 fetch-eth test-dataset wordlist wordlist-core crack-wordlist crack-wordlist-eth
 
 all: $(BINARIES)
 
@@ -103,10 +103,14 @@ fetch-bloom:
 fetch-h160:
 	./scripts/fetch_hf_h160.sh
 
-fetch-dataset: fetch-bloom fetch-h160
+fetch-eth:
+	./scripts/fetch_hf_eth.sh
+
+fetch-dataset: fetch-bloom fetch-h160 fetch-eth
 
 test-dataset: all $(TABLE)
 	TABLE="$(TABLE)" ./scripts/test_hf_brain.sh
+	@if [ -f data/eth.blf ] && [ -f data/eth.bin ]; then TABLE="$(TABLE)" ./scripts/test_hf_eth.sh; fi
 
 data/wordlist.txt: data/seeds.txt scripts/make_wordlist.py
 	python3 scripts/make_wordlist.py -o data/wordlist.txt
@@ -120,6 +124,11 @@ crack-wordlist: all $(TABLE) data/wordlist.txt
 	@test -f data/keys.blf || { echo "missing data/keys.blf; run make fetch-bloom" >&2; exit 1; }
 	@test -f data/h160.bin || { echo "missing data/h160.bin; run make fetch-h160" >&2; exit 1; }
 	./brainflayer -v -b data/keys.blf -f data/h160.bin -m "$(TABLE)" -i data/wordlist.txt -o data/wordlist.hits
+
+crack-wordlist-eth: all $(TABLE) data/wordlist.txt
+	@test -f data/eth.blf || { echo "missing data/eth.blf; run make fetch-eth" >&2; exit 1; }
+	@test -f data/eth.bin || { echo "missing data/eth.bin; run make fetch-eth" >&2; exit 1; }
+	./brainflayer -v -c e -b data/eth.blf -f data/eth.bin -m "$(TABLE)" -i data/wordlist.txt -o data/wordlist.eth.hits
 
 clean:
 	rm -f $(BINARIES) $(OBJECTS) $(OBJECTS:.o=.d) tests/test_sha256 tests/test_sha256.d

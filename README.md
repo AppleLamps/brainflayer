@@ -175,15 +175,22 @@ make test          # correctness checks (needs ~a few seconds)
 To crack against the private funded-key datasets:
 
 ```
-export HF_TOKEN=...          # read access to AppleLampsX/brain and AppleLampsX/h160
-make fetch-dataset           # keys.blf bloom + h160.bin exact list
+export HF_TOKEN=...          # read access to AppleLampsX/brain, h160, and eth
+make fetch-dataset           # keys.blf bloom + h160.bin + eth.blf/eth.bin
 make test-dataset            # load + negative-control + -f false-positive check
 brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab -i phrases.txt
+brainflayer -v -c e -b data/eth.blf -f data/eth.bin -m /tmp/ecmult.w16.tab -i phrases.txt
 ```
 
 `keys.blf` is a 512 MiB bloom (~90M hash160s). `h160.bin` is the exact sorted
 list (90,379,448 records) from [AppleLampsX/h160](https://huggingface.co/datasets/AppleLampsX/h160).
 Always pass `-f` or bloom hits can be false positives.
+
+[AppleLampsX/eth](https://huggingface.co/datasets/AppleLampsX/eth) is the
+Ethereum counterpart (`ethereum.hex.gz` → `eth.blf` + sorted `eth.bin`).
+Use `-c e` so candidates are hashed as Ethereum addresses (keccak of the
+uncompressed pubkey). `make crack-wordlist-eth` runs the generated wordlist
+against it.
 
 Build a candidate wordlist (common passwords, dictionary stems, BIP-39/EFF
 words, curated public-domain phrases, light mutations, then ranked two-word
@@ -196,6 +203,7 @@ make wordlist                 # writes data/wordlist.txt (>1 billion phrases, ~2
 # make wordlist-core          # quality prefix only (~3 million)
 python3 scripts/make_wordlist.py -o - | brainflayer -v -b data/keys.blf -f data/h160.bin -m /tmp/ecmult.w16.tab
 # or: make crack-wordlist     # file-backed with -f; writes data/wordlist.hits
+# or: make crack-wordlist-eth # Ethereum -c e against eth.blf/eth.bin
 ```
 
 `make wordlist` downloads public lists into `data/wordlist-src/` (gitignored)

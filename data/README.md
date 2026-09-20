@@ -27,7 +27,28 @@ brainflayer -v -b keys.blf -f h160.bin -m /tmp/ecmult.w16.tab -i wordlist.txt
 python3 ../scripts/h160_lookup.py h160.bin 5d3a136dda11e1616e72416e7c9d7581863aecdf
 ```
 
-`make fetch-dataset` fetches both files.
+`make fetch-dataset` fetches the Bitcoin bloom, Bitcoin hash160 list, and
+Ethereum address list.
+
+## Ethereum addresses
+
+Download [AppleLampsX/eth](https://huggingface.co/datasets/AppleLampsX/eth)
+(`ethereum.hex.gz`), build a bloom filter, and convert to the sorted 20-byte
+file brainflayer `-f` expects:
+
+```
+export HF_TOKEN=...   # read access to AppleLampsX/eth
+./scripts/fetch_hf_eth.sh
+```
+
+That writes `eth.blf` and `eth.bin`. The upstream file is unsorted 40-hex
+addresses with no `0x` prefix (~62 million lines, including contracts such as
+WETH). The fetch script sorts unique records before building `eth.bin`. Use
+`-c e` (Ethereum address from the uncompressed pubkey):
+
+```
+brainflayer -v -c e -b eth.blf -f eth.bin -m /tmp/ecmult.w16.tab -i wordlist.txt
+```
 
 ## Wordlist
 
